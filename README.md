@@ -2,8 +2,7 @@
 Set of tools for operations
 
 ## Requirements:
-* [clush](https://github.com/cea-hpc/clustershell)
-  * Clush must be fully configured to run on cluster.
+* See requirements.txt
 
 ## Tools Included:
 * Cluster Ticket Tracker (CTT)
