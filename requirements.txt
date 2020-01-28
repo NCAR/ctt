@@ -1,2 +1,9 @@
+Requirements for Cluster Ticket Tracker:
 db-sqlite3
 ClusterShell
+
+Requirements for Bad Cable List:
+???
+
+Requirements for HealthChecker:
+???
