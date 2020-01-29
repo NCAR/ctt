@@ -6,5 +6,5 @@ Set of tools for operations
 
 ## Tools Included:
 * Cluster Ticket Tracker (CTT)
-** See ctt.md for documentation
+  * See ctt.md for documentation
 * Bad Cable List (BCL)
