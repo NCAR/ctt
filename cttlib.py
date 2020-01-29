@@ -277,7 +277,7 @@ def get_history(cttissue):	#used only when issuing --show with -d option
                 updatedby = (row[3])
                 info = (row[4])
 
-                print(fmt("%s" % date, "%s" % updatedby, "%s" % textwrap.fill(info, width=60)))
+                print(fmt("%s" % date, "%s" % updatedby, "%s" % textwrap.fill(info, width=80)))
     else:
         return
 
