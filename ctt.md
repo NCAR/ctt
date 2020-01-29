@@ -1,12 +1,16 @@
 Cluster Ticket Tracker Version 1.0.0
     
     --auto
-
                 ctt.py --auto   
+
+    --attach
+                ctt.py --attach ISSUENUMBER FILEPATH
+
+                Examples:
+                ctt.py --attach 1020 /tmp/ipmi_sdr_list.out
 
  
     --open      
-                
                 ctt.py --open ISSUETITLE ISSUEDESC -c CLUSTER -n NODE [-a ASSIGNTO]             # Default ASSIGNTO is ssg
                 
                 Examples:
@@ -14,7 +18,6 @@ Cluster Ticket Tracker Version 1.0.0
     
     
     --show      
-                
                 ctt.py --show ISSUENUMBER [-d]
                 
                 Examples:
@@ -25,7 +28,6 @@ Cluster Ticket Tracker Version 1.0.0
     
     
     --list      
-                
                 ctt.py --list [-s {open,closed,deleted}]
 				[-v] [-vv]
                 
@@ -35,7 +37,6 @@ Cluster Ticket Tracker Version 1.0.0
                 ctt.py --list -s closed -vv
 
     --update    
-                
                 ctt.py --update ISSUENUMBER [-s {1,2,3,4}]
                                                 [-c CLUSTER] [-n NODE] [-t TICKET]
                                                 [-a ASSIGNEDTO]
@@ -56,7 +57,6 @@ Cluster Ticket Tracker Version 1.0.0
 
 
     --comment
-
                 ctt.py --comment ISSUENUMBER COMMENT
 
                 Examples:
@@ -64,7 +64,6 @@ Cluster Ticket Tracker Version 1.0.0
 
                 
     --close
-
                 ctt.py --close ISSUENUMBER COMMENT
 
                 Examples:
@@ -72,11 +71,8 @@ Cluster Ticket Tracker Version 1.0.0
                                                 
 
     --delete	#FUTURE FEATURE. Only the cttadmin can delete issues.
-
                 ctt.py --delete ISSUENUMBER COMMENT
 
                 Examples:
                 ctt.py --delete 10101 "Duplicate issue"
-
-    
 
