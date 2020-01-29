@@ -69,15 +69,17 @@ if '--auto' in sys.argv[1]:
 
 elif '--attach' in sys.argv[1]:
     # ./ctt.py --attach 1020 /tmp/ipmi_sdr_list.out
+    import ntpath
     parser = argparse.ArgumentParser(add_help=False, description="Cluster Ticket Tracker Version 1.0.0")
     parser.add_argument('--attach', action='store', dest='attachment', nargs=2, required=True)    
     args = parser.parse_args()
 
     if args.attachment[0] and args.attachment[1]:  
         create_attachment(args.attachment[0],args.attachment[1],attach_location,date,updatedby)
-        update_issue(args.attachment[0], 'updatedby', updatedby)	#commented out for dev
-        update_issue(args.attachment[0], 'updatedtime', date)          #commented out for dev
-        log_history(args.attachment[0], date, updatedby, 'Attached file: %s' % (args.attachment[1]))		#commented out for dev
+        update_issue(args.attachment[0], 'updatedby', updatedby)
+        update_issue(args.attachment[0], 'updatedtime', date) 
+        filename = ntpath.basename(args.attachment[1])     
+        log_history(args.attachment[0], date, updatedby, 'Attached file: %s/%s/%s.%s' % (attach_location, args.attachment[0], date[0:16], filename))	
         view_tracker_update(args.attachment[0],updatedby)    
     exit(0)
 
