@@ -1,9 +1,9 @@
 # List of features, fixes, improvements...
 
 * Add path to clush and pbsnodes in configuration ini file
-* In list view, if external ticket, state YES and show the actual ticket number in --show
-  * if adding a ticket, remove '----' and add new ticket #. if not '----', append.
+* functionality to append to ticket --There may be times when we have multiple external tickets.
 * If --update, etc (whatever it may be) and no reason to run pbsnodes, lets NOT
+* ------------------
 * When closing and/or deleting an issue, check siblings for open issues before releasing.
   * if issue (node) has attached siblings:
     * check each sibling to determine if an issue is open on the sibling node
