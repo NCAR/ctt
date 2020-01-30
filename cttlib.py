@@ -41,6 +41,7 @@ defaults = config['DEFAULTS']
 pbsadmin = defaults['pbsadmin']
 users = config['USERS']
 viewnotices = users['viewnotices']
+pbs_states_csv = os.popen("clush -Nw {0} /opt/pbs/default/bin/pbsnodes -av -Fdsv -D,".format(pbsadmin)).readlines()
 
 def create_attachment(cttissue,filepath,attach_location,date,updatedby):
     import shutil
@@ -66,7 +67,6 @@ def create_attachment(cttissue,filepath,attach_location,date,updatedby):
         print("Error: File not attached, unknown error")
 
 def run_auto(date,severity,assignedto,updatedby,cluster):
-    pbs_states_csv = os.popen("clush -Nw {0} /opt/pbs/default/bin/pbsnodes -av -Fdsv -D,".format(pbsadmin)).readlines()
     for line in pbs_states_csv:
         splitline = line.split(",")
         node = splitline[0] 
@@ -159,7 +159,6 @@ def get_cluster():	#used by run_auto
 
 def get_pbs_node_state(node): #gets state of single node in pbs. Used for sibling states currently     
     if node:
-        pbs_states_csv = os.popen("clush -Nw %s /opt/pbs/default/bin/pbsnodes -Fdsv -D, -v %s" % (pbsadmin,node))        
         for line in pbs_states_csv:
             splitline = line.split(",")
             state = splitline[5]
