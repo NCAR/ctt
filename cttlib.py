@@ -98,7 +98,7 @@ def run_auto(date,severity,assignedto,updatedby,cluster):
                         status = 'open'
                         issuetitle = comment
                         issuedescription = comment
-                        ticket = '----'
+                        ticket = '---'
                         updatedby = 'ctt'
                         issuetype = 'u'
                         issueoriginator = 'ctt'
@@ -400,9 +400,6 @@ def update_issue(cttissue, updatewhat, updatedata):
         print("ctt issue %s not found or deleted" % (cttissue))
     
 
-#def print_header():    #NOT USED ANYMORE
-#    print(fmt("ISSUE", "DATE", "TICKET", "HOSTNAME", "TYPE", "OWNER", "STATE", "LAST.UPDATE", "UNSEEN", "TITLE"))    
-
 def check_has_sibs(cttissue):	#check if a cttissue has sibs in open status
     con = SQL.connect('ctt.sqlite')
     with con:
@@ -418,7 +415,6 @@ def get_issues(statustype):	#used for the --list option
     cols = "{0:<8}{1:<19}{2:<9}{3:<13}{4:<16}{5:<6}{6:<7}{7:<8}{8:<12}{9:<28}"
     fmt = cols.format    
     print(fmt("ISSUE", "DATE", "TICKET", "HOSTNAME", "STATE", "SEV", "TYPE", "OWNER", "UNSEEN", "TITLE (25 chars)"))
-   # print_header() #put header here!!! not in funct
     con = SQL.connect('ctt.sqlite')
     with con:
         cur = con.cursor()
@@ -428,6 +424,8 @@ def get_issues(statustype):	#used for the --list option
             date = (row[2][0:16])
             severity = (row[3])
             ticket = (row[4])
+            if '---' not in ticket:
+                ticket = 'yes'
             status = (row[5])
             cluster = (row[6])
             hostname = (row[7])
@@ -655,7 +653,7 @@ def checkdb(date):		#checks the ctt db if tables and/or db itself exists. Create
 		    cluster,hostname,issuetitle,issuedescription,assignedto,
 		    issueoriginator,updatedby,issuetype,state,updatedtime,viewtracker)
 		    VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
-		    (cttissuestart, date, 99, "----", "----", "----", "----", 
+		    (cttissuestart, date, 99, "---", "----", "----", "----", 
 			"----", "Created table", "----", "----", "----", "----", "----", "----", "----"))
  
     with con:
