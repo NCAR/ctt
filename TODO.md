@@ -1,9 +1,9 @@
 # List of features, fixes, improvements...
 
-* Speed up processing the list view by running pbsnodes once instead of for each sibling or run_auto
 * Add path to clush and pbsnodes in configuration ini file
 * In list view, if external ticket, state YES and show the actual ticket number in --show
   * if adding a ticket, remove '----' and add new ticket #. if not '----', append.
+* If --update, etc (whatever it may be) and no reason to run pbsnodes, lets NOT
 * When closing and/or deleting an issue, check siblings for open issues before releasing.
   * if issue (node) has attached siblings:
     * check each sibling to determine if an issue is open on the sibling node
