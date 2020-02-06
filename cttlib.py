@@ -318,7 +318,7 @@ def get_issue_full(cttissue):	#used for the --show option
                 updatedby = (row[12])
                 issuetype = (row[13])
                 state = (row[14])
-                updatedtime = (row[15])
+                updatedtime = (row[15][0:16])
                 print("ctt Issue: %s" % (cttissue))
                 print("External Ticket: %s" % (ticket))
                 print("Date Opened: %s" % (date))
