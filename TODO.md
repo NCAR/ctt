@@ -5,7 +5,7 @@
 * If --update, etc (whatever it may be) and no reason to run pbsnodes, lets NOT
       *therefore, move pbsnodes run back inside run_auto
 	  *should be a function call to gather pbsnode states (will be used for releasing nodes)
-	  
+      *when --list with siblings and --show with siblings, merely pull data from db, NOT pull real-time	  
 
 * ------------------
 * When closing and/or deleting an issue, check siblings for open issues before releasing.
