@@ -41,6 +41,9 @@ defaults = config['DEFAULTS']
 pbsadmin = defaults['pbsadmin']
 users = config['USERS']
 viewnotices = users['viewnotices']
+
+#run_pbsnodes = ['--auto', '--list']	#only run pbsnodes when --auto is run
+#if sys.argv[1] in run_pbsnodes:
 pbs_states_csv = os.popen("clush -Nw {0} /opt/pbs/default/bin/pbsnodes -av -Fdsv -D,".format(pbsadmin)).readlines()
 
 def create_attachment(cttissue,filepath,attach_location,date,updatedby):
@@ -87,7 +90,7 @@ def run_auto(date,severity,assignedto,updatedby,cluster):
                 update_issue(cttissue, 'updatedtime', date)
                 log_history(cttissue, date, 'ctt', 'state changed to %s' % (state))
  
-        elif state in ('offline', 'down'):	#if no issue on node, open with states offline and down     
+        elif state in ('state-unknown', 'offline', 'down'):	#if no issue on node, open with states offline and down     
             for item in splitline:
                 if 'comment=' in item:
                     x,comment = item.split('=')
