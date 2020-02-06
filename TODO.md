@@ -3,6 +3,10 @@
 * Add path to clush and pbsnodes in configuration ini file
 * functionality to append to ticket --There may be times when we have multiple external tickets.
 * If --update, etc (whatever it may be) and no reason to run pbsnodes, lets NOT
+      *therefore, move pbsnodes run back inside run_auto
+	  *should be a function call to gather pbsnode states (will be used for releasing nodes)
+	  
+
 * ------------------
 * When closing and/or deleting an issue, check siblings for open issues before releasing.
   * if issue (node) has attached siblings:
