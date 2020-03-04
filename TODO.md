@@ -1,15 +1,12 @@
 # List of ideas, features, fixes, improvements...
 
-* set limits of # of issues open?
-  * ini config: MaxIssuesOpen = 500
-* set limits of # of issues opened in a specific run?
-  * ini config: MaxIssuesRun = 288
-  * count # of bad nodes before opening issues on the nodes. -if >= n, do something?
-  * perhaps an entry such as: 
+* set limits of # of issues opened in a specific run if x number failed in a single --auto, someting bad is happening!
+  * ini config: maxissuesrun = 288
+  * Include detailed info in the 'details' section of ticket!
+  * count # of bad nodes before opening issues on the nodes. -if >= n:
+  * Add below entry to db/listing...: 
   * ISSUE   DATE               TICKET   HOSTNAME     STATE     SEV   TYPE   OWNER   UNSEEN      TITLE (25 chars)
-  * 0000    2020-02-06T10:07   ERROR    ERROR        ERROR      1     X     ERROR   ERROR       MAX OPEN: $TotalCount/$MaxIssuesOpen
   * 0000    2020-02-06T10:07   ERROR    ERROR        ERROR      1     X     ERROR   ERROR       MAX RUN: $TotalCount/$MaxIssuesRun
-  * 
 
 * function to dump everything to a file
 * improved statistics
