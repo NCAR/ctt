@@ -44,6 +44,19 @@ viewnotices = users['viewnotices']
 pbsnodes_path = defaults['pbsnodes_path']                                                                                                
 clush_path = defaults['clush_path']
 
+def get_open_count():
+    ticket_list = []
+    severity_list = []
+    status_list = []
+    issueoriginator_list = []
+
+    con = SQL.connect('ctt.sqlite')
+    cur = con.cursor()
+    cur.execute('''SELECT * FROM issues WHERE status = ?''', ('open',))
+    return len(cur.fetchall())
+#    data = cur.fetchall()
+#    print(len(data))
+
 #run_pbsnodes = ['--auto', '--list']	#only run pbsnodes when --auto is run
 #if sys.argv[1] in run_pbsnodes:
 pbs_states_csv = os.popen("{0} -Nw {1} {2} -av -Fdsv -D,".format(clush_path, pbsadmin, pbsnodes_path)).readlines()

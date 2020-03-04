@@ -54,18 +54,28 @@ severity = defaults['severity']
 issuestatus = defaults['issuestatus']
 assignedto = defaults['assignedto']
 attach_location = defaults['attach_location']
-#pbsnodes_path = defaults['pbsnodes_path']
-#clush_path = defaults['clush_path']
-
+maxissuesrun = defaults['maxissuesrun'] #MOVE THIS TO CTTLIB
+maxissuesopen = defaults['maxissuesopen'] #ONLY USED WITH AUTO, CAN STILL MANUALLY OPEN ISSUES
 cluster = get_cluster()	#determine the cluster based on the pbsadmin value in ctt.ini
 
-try:
+#if int(maxissuesopen) != int(0):
+#   open_count = get_open_count()
+#    if open_count >= int(maxissuesopen):
+#        print('blah blah blah')
+
+try: #??????
     if not sys.argv[1]:
         show_help()
 except IndexError:  #??????                                                                                                                                                                                         
     show_help()
 
 if '--auto' in sys.argv[1]:
+    if int(maxissuesopen) != int(0):
+        open_count = get_open_count()
+        if open_count >= int(maxissuesopen):
+            print('Maximum number of issues (%s) reached for --auto' % (maxissuesopen))
+            print('Can not process --auto')
+            exit(1)
     run_auto(date,severity,assignedto,updatedby,cluster)   
     exit(0)  
 
