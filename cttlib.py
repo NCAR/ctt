@@ -41,10 +41,14 @@ defaults = config['DEFAULTS']
 pbsadmin = defaults['pbsadmin']
 users = config['USERS']
 viewnotices = users['viewnotices']
+pbsnodes_path = defaults['pbsnodes_path']                                                                                                
+clush_path = defaults['clush_path']
 
 #run_pbsnodes = ['--auto', '--list']	#only run pbsnodes when --auto is run
 #if sys.argv[1] in run_pbsnodes:
-pbs_states_csv = os.popen("clush -Nw {0} /opt/pbs/default/bin/pbsnodes -av -Fdsv -D,".format(pbsadmin)).readlines()
+pbs_states_csv = os.popen("{0} -Nw {1} {2} -av -Fdsv -D,".format(clush_path, pbsadmin, pbsnodes_path)).readlines()
+
+
 
 def create_attachment(cttissue,filepath,attach_location,date,updatedby):
     import shutil
@@ -172,15 +176,15 @@ def get_pbs_node_state(node): #gets state of single node in pbs. Used for siblin
 
 def set_pbs_offline(node, comment): #fix static admin node below ### NOT USED YET
     if comment:		#do we want to update/change comment???
-        return os.popen("clush -Nw %s /opt/pbs/default/bin/pbsnodes -o -C %s %s" % (pbsadmin,comment, node))
+        return os.popen("%s -Nw %s %s -o -C %s %s" % (clush_path, pbsadmin, pbsnodes_path, comment, node))
     else:
-        return run_task("/opt/pbs/default/bin/pbsnodes -o %s" % (node))   #FIX???
+        return run_task("%s -o %s" % (pbsnodes_path, node))   #FIX???
 
 def set_pbs_online(node, comment):	#fix static admin node below ### NOT USED YET         # when closing/releasing a sibling node, need to check ctt if another parent issue has sibling.
     if comment:		# we want to clear previous comment out
-        return os.popen("clush -Nw %s /opt/pbs/default/bin/pbsnodes -r -C %s %s" % (pbsadmin, comment, node))
+        return os.popen("%s -Nw %s %s -r -C %s %s" % (clush_path, pbsadmin, pbsnodes_path, comment, node))
     else:
-        return os.popen("clush -Nw %s /opt/pbs/default/bin/pbsnodes -r %s" % (pbsadmin, node))
+        return os.popen("%s -Nw %s %s -r %s" % (clush_path, pbsadmin, pbsnodes_path, node))
 
 def get_hostname(cttissue):
     con = SQL.connect('ctt.sqlite')

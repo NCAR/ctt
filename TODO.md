@@ -1,10 +1,5 @@
 # List of ideas, features, fixes, improvements...
 
-* Add path to clush and pbsnodes in configuration ini file
-* only run pbsnodes during run_auto() (--auto):
-  * move pbsnodes run inside run_auto()
-  * should be a function call to gather pbsnode states (will be used for releasing nodes)
-  * when --list with siblings and --show with siblings, merely pull data from db, NOT pull real-time	  
 * set limits of # of issues open?
   * ini config: MaxIssuesOpen = 500
 * set limits of # of issues opened in a specific run?
@@ -18,14 +13,11 @@
 
 * function to dump everything to a file
 * improved statistics
+* ability to reopen an issue
 
 
 
-
-
-
-* ------------------
-* When closing and/or deleting an issue, check siblings for open issues before releasing.
+* PRIORITY: When closing and/or deleting an issue, check siblings for open issues before releasing.
   * if issue (node) has attached siblings:
     * check each sibling to determine if an issue is open on the sibling node
     * check each sibling to deterine if that node is a sibling for another issue

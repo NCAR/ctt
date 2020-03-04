@@ -54,6 +54,8 @@ severity = defaults['severity']
 issuestatus = defaults['issuestatus']
 assignedto = defaults['assignedto']
 attach_location = defaults['attach_location']
+#pbsnodes_path = defaults['pbsnodes_path']
+#clush_path = defaults['clush_path']
 
 cluster = get_cluster()	#determine the cluster based on the pbsadmin value in ctt.ini
 
