@@ -78,7 +78,8 @@ def run_auto(date,severity,assignedto,updatedby,cluster):
         x,state = state.split('=')
         #known pbs states: 'free', 'job-busy', 'job-exclusive', 
         #'resv-exclusive', offline, down, provisioning, wait-provisioning, stale, state-unknown
-
+        
+        #add a if sibling_open_check() and update sibling's table entry. when --list or show, will read that table for state
         if node_open_check(node) is True:  #update node state if open issue on node and state changed
             cttissue = check_node_state(node,state)
             if cttissue is None:	#no change in state
@@ -447,7 +448,7 @@ def get_issues(statustype):	#used for the --list option
             if check_has_sibs(cttissue) is True:
                 sibs = resolve_siblings(hostname)
                 for node in sibs:
-                    state = get_pbs_node_state(node)
+                    state = get_pbs_node_state(node)	#
                     issuetitle = "Sibling to %s" % (hostname)
                     issuetype = 'o'
                     if node != hostname:
