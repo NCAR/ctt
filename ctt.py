@@ -58,11 +58,6 @@ maxissuesrun = defaults['maxissuesrun'] #MOVE THIS TO CTTLIB
 maxissuesopen = defaults['maxissuesopen'] #ONLY USED WITH AUTO, CAN STILL MANUALLY OPEN ISSUES
 cluster = get_cluster()	#determine the cluster based on the pbsadmin value in ctt.ini
 
-#if int(maxissuesopen) != int(0):
-#   open_count = get_open_count()
-#    if open_count >= int(maxissuesopen):
-#        print('blah blah blah')
-
 try: #??????
     if not sys.argv[1]:
         show_help()
@@ -73,9 +68,16 @@ if '--auto' in sys.argv[1]:
     if int(maxissuesopen) != int(0):
         open_count = get_open_count()
         if open_count >= int(maxissuesopen):
-            print('Maximum number of issues (%s) reached for --auto' % (maxissuesopen))
-            print('Can not process --auto')
-            exit(1)
+            if maxissueopen_issue() is False:
+                print('Maximum number of issues (%s) reached for --auto' % (maxissuesopen))
+                print('Can not process --auto')
+                details = "To gather nodes and failures, increase maxissuesopen"
+                cttissue = new_issue(date, '1', '---', 'open', \
+                            cluster, 'FATAL', 'MAX OPEN REACHED', \
+                            details, 'FATAL', 'FATAL', \
+                            'FATAL', 'o', 'FATAL', date)
+                log_history(cttissue, date, updatedby, 'new issue')
+            exit(1) 
     run_auto(date,severity,assignedto,updatedby,cluster)   
     exit(0)  
 
