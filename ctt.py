@@ -283,6 +283,23 @@ elif '--close' in sys.argv[1]:     # need to check if already deleted. also says
         close_issue(args.closevalue[0], date, updatedby)
         log_history(args.closevalue[0], date, updatedby, 'closed issue: %s' % (args.closevalue[1]))
 
+###########
+elif '--reopen' in sys.argv[1]:
+    # ./ctt.py --reopen 10282 "Accidental close"
+    parser = argparse.ArgumentParser(add_help=False, description="Cluster Ticket Tracker Version 1.0.0")
+    parser.add_argument('--reopen', action='store', dest='reopenvalue', nargs=2, required=True)    
+    args = parser.parse_args()
+
+    if args.reopenvalue[0] and args.reopenvalue[1]:
+        test_arg_size(args.reopenvalue[1],what='comment',maxchars=500)
+        comment_issue(args.reopenvalue[0], date, updatedby, args.reopenvalue[1])
+        update_issue(args.reopenvalue[0], 'updatedby', updatedby)
+        update_issue(args.reopenvalue[0], 'updatedtime', date)
+        update_issue(args.reopenvalue[0], 'status', 'open')
+        log_history(args.reopenvalue[0], date, updatedby, 'reopened issue: %s' % (args.reopenvalue[1]))
+
+###########
+
 elif '--open' in sys.argv[1]:
     # ./ctt.py --open "Failed dimm on r1i1n1" "Description here" -c cheyenne -s 1 -n r1i1n1 -a casg
     parser = argparse.ArgumentParser(add_help=False, description="Cluster Ticket Tracker Version 1.0.0")

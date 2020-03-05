@@ -778,6 +778,14 @@ def show_help():
 		ctt.py --close 10282 "Issue resolved"	
 
 
+    --reopen
+
+        ctt.py --reopen ISSUENUMBER COMMENT
+
+        Examples:
+		ctt.py --reopen 10421 "Need to reopen this issue"
+
+
     --delete
 
 		ctt.py --delete ISSUENUMBER COMMENT
