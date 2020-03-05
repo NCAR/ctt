@@ -8,16 +8,8 @@
   * ISSUE   DATE               TICKET   HOSTNAME     STATE     SEV   TYPE   OWNER   UNSEEN      TITLE (25 chars)
   * 0000    2020-02-06T10:07   ERROR    ERROR        ERROR      1     X     ERROR   ERROR       MAX RUN: totalcount/maxissuesrun
 
-* Need to add entry when maxissuesopen is reached such as:
-  * ISSUE   DATE               TICKET   HOSTNAME     STATE     SEV   TYPE   OWNER   UNSEEN      TITLE (25 chars)
-  * 0000    2020-02-06T10:07   ERROR    ERROR        ERROR      1     X     ERROR   ERROR       MAX OPEN: maxissuesopen
-
-
 * function to dump everything to a file
 * improved statistics
-* ability to reopen an issue
-
-
 
 * PRIORITY: When closing and/or deleting an issue, check siblings for open issues before releasing.
   * if issue (node) has attached siblings:
