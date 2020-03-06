@@ -2,10 +2,12 @@
 
 
 * FIX: If node has NO siblings, dont run release! Looks to be a bug
+* FIX: pbs state of node not updating. Drained nodes showing jobs
+  * Could be that siblings table is not getting auto updated from run_auto()
 * Function to dump everything to a file
 * Improved statistics
 * If can not get pbsnodes, add FATAL ctt issue. Use function in --auto as example.
-
+* Reduce verbosity such as when a node is updated, etc.
 
 * When closing and/or deleting an issue, check siblings for open issues before releasing.
   * if issue (node) has attached siblings:
