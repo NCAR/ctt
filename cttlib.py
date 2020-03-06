@@ -43,6 +43,7 @@ users = config['USERS']
 viewnotices = users['viewnotices']
 pbsnodes_path = defaults['pbsnodes_path']                                                                                                
 clush_path = defaults['clush_path']
+maxissuesopen = defaults['maxissuesopen'] #ONLY USED WITH AUTO, CAN STILL MANUALLY OPEN ISSUES
 
 def maxissueopen_issue():
     con = SQL.connect('ctt.sqlite')
@@ -60,8 +61,7 @@ def get_open_count():
 #run_pbsnodes = ['--auto', '--list']	#only run pbsnodes when --auto is run
 #if sys.argv[1] in run_pbsnodes:
 pbs_states_csv = os.popen("{0} -Nw {1} {2} -av -Fdsv -D,".format(clush_path, pbsadmin, pbsnodes_path)).readlines()
-
-
+# need check if len(pbs_states_csv) < n...
 
 def create_attachment(cttissue,filepath,attach_location,date,updatedby):
     import shutil
@@ -87,6 +87,19 @@ def create_attachment(cttissue,filepath,attach_location,date,updatedby):
         print("Error: File not attached, unknown error")
 
 def run_auto(date,severity,assignedto,updatedby,cluster):
+    if int(maxissuesopen) != int(0):                                                                                                                        
+        open_count = get_open_count()                                                                                                                       
+        if open_count >= int(maxissuesopen):                                                                                                                
+            if maxissueopen_issue() is False:                                                                                                               
+                print('Maximum number of issues (%s) reached for --auto' % (maxissuesopen))                                                                 
+                print('Can not process --auto')                                                                                                             
+                details = "To gather nodes and failures, increase maxissuesopen"                                                                            
+                cttissue = new_issue(date, '1', '---', 'open', \
+                            cluster, 'FATAL', 'MAX OPEN REACHED', \
+                            details, 'FATAL', 'FATAL', \
+                            'FATAL', 'o', 'FATAL', date)                                                                                                    
+                log_history(cttissue, date, updatedby, 'new issue')                                                                                         
+            exit(1) 
     for line in pbs_states_csv:
         splitline = line.split(",")
         node = splitline[0] 
@@ -797,5 +810,15 @@ def show_help():
 
     exit()
 
-
+#############                                                                                                                                               
+#if len(pbs_states_csv) < 5555:                                                                                                                              
+#    print('sorry')                                                                                                                                          
+#    details = "Can not get pbsnodes csv file. If this issue persists, escalate this ticket."                                                                
+#    cttissue = new_issue(date, '1', '---', 'open', \
+#                          cluster, 'FATAL', 'CAN NOT GET PBSNODES', \
+#                          details, 'FATAL', 'FATAL', \
+#                          'FATAL', 'o', 'FATAL', date)
+#    log_history(cttissue, date, updatedby, 'new issue')                                                                                                     
+#    exit(1)                                                                                                                                                 
+#############                                               
 
