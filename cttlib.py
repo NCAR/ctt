@@ -88,7 +88,7 @@ def create_attachment(cttissue,filepath,attach_location,date,updatedby):
         print("Error: File not attached, unknown error")
 
 def run_auto(date,severity,assignedto,updatedby,cluster):
-    newissuedict = {}  ##############
+    newissuedict = {} 
     if int(maxissuesopen) != int(0):                                                                                                                        
         open_count = get_open_count()                                                                                                                       
         if open_count >= int(maxissuesopen):                                                                                                                
@@ -151,7 +151,8 @@ def run_auto(date,severity,assignedto,updatedby,cluster):
     elif len(newissuedict) >= int(maxissuesrun):
         print('Maximum number of issues reached for --auto')                                                                  
         print('Can not process --auto')                                                                                                             
-        details = "This run of ctt discovered more issues than maxissuesrun. Discovered: %s; maxissuesrun: %s" % (len(newissuedict), maxissuesrun)                                                                           
+        details = "This run of ctt discovered more issues than maxissuesrun. \
+                   Discovered: %s; maxissuesrun: %s\n\n %s" % (len(newissuedict), maxissuesrun, newissuedict)                                                                           
         cttissue = new_issue(date, '1', '---', 'open', \
                              cluster, 'FATAL', 'MAX RUN REACHED: %s/%s' % (len(newissuedict), maxissuesrun), \
                              details, 'FATAL', 'FATAL', \
