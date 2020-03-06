@@ -1,23 +1,10 @@
 # List of ideas, features, fixes, improvements...
 
 
-* set limits of # of issues opened in a specific run if x number failed in a single --auto, someting bad is happening!
-  * ini config: maxissuesrun = 288
-  * Include detailed info in the 'details' section of ticket!
-  * count # of bad nodes before opening issues on the nodes. -if >= n:
-  * Add below entry to db/listing...: 
-  * ISSUE   DATE               TICKET   HOSTNAME     STATE     SEV   TYPE   OWNER   UNSEEN      TITLE (25 chars)
-  * 0000    2020-02-06T10:07   FATAL    FATAL        FATAL      1     o     FATAL   FATAL       MAX RUN: totalcount/maxissuesrun
-  * Iterate the csv, if bad node has no open issue, add key/value (node:comment) to dictionary. 
-  * If number of keys is < maxissuesrun:
-  * Process all new issues from dictionary.
-  * If number of keys is >= maxissuesrun:
-  * new_issue() (also dump key:values to issue description)
-
-
+* FIX: If node has NO siblings, dont run release! Looks to be a bug
 * Function to dump everything to a file
 * Improved statistics
-* If can not get pbsnodes, add FATAL ctt issue
+* If can not get pbsnodes, add FATAL ctt issue. Use function in --auto as example.
 
 
 * When closing and/or deleting an issue, check siblings for open issues before releasing.
