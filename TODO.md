@@ -1,7 +1,7 @@
 # List of ideas, features, fixes, improvements...
 
 
-* FIX: If node has NO siblings, dont run release! Looks to be a bug
+* FIX: Need to update sibling pbs states with run_auto()
 * FIX: pbs state of node not updating. Drained nodes showing jobs
   * Could be that siblings table is not getting auto updated from run_auto()
 * Function to dump everything to a file
