@@ -70,9 +70,15 @@ Cluster Ticket Tracker Version 1.0.0
                 ctt.py --close 10282 "Issue resolved"
                                                 
 
+    --reopen                                                                                                                                                                             
+                ctt.py --reopen ISSUENUMBER COMMENT                                                                                                                                              
+                Examples:                                                                                                                                                               
+                ctt.py --reopen 10421 "Need to reopen this issue"   
+
+
     --delete	#FUTURE FEATURE. Only the cttadmin can delete issues.
                 ctt.py --delete ISSUENUMBER COMMENT
 
-                Examples:
+                examples:
                 ctt.py --delete 10101 "Duplicate issue"
 
