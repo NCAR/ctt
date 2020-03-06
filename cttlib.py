@@ -44,6 +44,7 @@ viewnotices = users['viewnotices']
 pbsnodes_path = defaults['pbsnodes_path']                                                                                                
 clush_path = defaults['clush_path']
 maxissuesopen = defaults['maxissuesopen'] #ONLY USED WITH AUTO, CAN STILL MANUALLY OPEN ISSUES
+maxissuesrun = defaults['maxissuesrun']
 
 def maxissueopen_issue():
     con = SQL.connect('ctt.sqlite')
@@ -87,6 +88,7 @@ def create_attachment(cttissue,filepath,attach_location,date,updatedby):
         print("Error: File not attached, unknown error")
 
 def run_auto(date,severity,assignedto,updatedby,cluster):
+    newissuedict = {}  ##############
     if int(maxissuesopen) != int(0):                                                                                                                        
         open_count = get_open_count()                                                                                                                       
         if open_count >= int(maxissuesopen):                                                                                                                
@@ -127,22 +129,35 @@ def run_auto(date,severity,assignedto,updatedby,cluster):
                     x,comment = item.split('=')
                     if comment == ' ':
                         comment = 'Unknown Reason'
-                    if node_open_check(node) is False:	#open new issue
+                    if node_open_check(node) is False:	#Prevents duplicate issues on node (doesnt check for sibs)
                         hostname = node
-                        status = 'open'
-                        issuetitle = comment
-                        issuedescription = comment
-                        ticket = '---'
-                        updatedby = 'ctt'
-                        issuetype = 'u'
-                        issueoriginator = 'ctt'
-                        updatedtime = date
-                        updatedtime = updatedtime[:-10]
-                        assignedto = 'ctt'
-                        cttissue = new_issue(date,severity,ticket,status,cluster,hostname,issuetitle, \
-                                     issuedescription,assignedto,issueoriginator,updatedby,issuetype,state,updatedtime)                        
-                        print("%s state is %s with comment: %s" %(node, state, comment)) 
-                        log_history(cttissue, date, 'ctt', 'new issue')
+                        newissuedict[hostname]=comment
+    if len(newissuedict) != 0 and len(newissuedict) <= int(maxissuesrun):
+        status = 'open'
+        ticket = '---'
+        updatedby = 'ctt'
+        issuetype = 'u'
+        issueoriginator = 'ctt'
+        updatedtime = date
+        updatedtime = updatedtime[:-10]
+        assignedto = 'ctt'
+        state = 'unknown'	 
+        for hostname,comment in newissuedict.items():
+            issuetitle = issuedescription = comment
+            cttissue = new_issue(date,severity,ticket,status,cluster,hostname,issuetitle, \
+                                 issuedescription,assignedto,issueoriginator,updatedby,issuetype,state,updatedtime)                        
+            print("%s state is %s with comment: %s" %(node, state, comment)) 
+            log_history(cttissue, date, 'ctt', 'new issue')
+    elif len(newissuedict) >= int(maxissuesrun):
+        print('Maximum number of issues reached for --auto')                                                                  
+        print('Can not process --auto')                                                                                                             
+        details = "This run of ctt discovered more issues than maxissuesrun. Discovered: %s; maxissuesrun: %s" % (len(newissuedict), maxissuesrun)                                                                           
+        cttissue = new_issue(date, '1', '---', 'open', \
+                             cluster, 'FATAL', 'MAX RUN REACHED: %s/%s' % (len(newissuedict), maxissuesrun), \
+                             details, 'FATAL', 'FATAL', \
+                             'FATAL', 'o', 'FATAL', date)                                                                                                    
+        log_history(cttissue, date, 'ctt', 'new issue')                                                                                         
+        exit(1)
 
 def test_arg_size(arg,what,maxchars):
     size = sys.getsizeof(arg)
