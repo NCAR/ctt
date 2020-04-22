@@ -2,6 +2,9 @@
 
 
 * FIX: Need to update sibling pbs states with run_auto()
+  * first add state column to sibnlings table
+  * second update sibling states during run_auto()
+
 * FIX: pbs state of node not updating. Drained nodes showing jobs
   * Could be that siblings table is not getting auto updated from run_auto()
 * Function to dump everything to a file
@@ -14,6 +17,8 @@
     * check each sibling to determine if an issue is open on the sibling node
     * check each sibling to deterine if that node is a sibling for another issue
   * If node has another issue, dont release
+
+* convert to mariadb 
 
 
 ########################################
