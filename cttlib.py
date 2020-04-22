@@ -87,6 +87,27 @@ def create_attachment(cttissue,filepath,attach_location,date,updatedby):
     else:
         print("Error: File not attached, unknown error")
 
+
+def sibling_open_check(node, state):
+    con = SQL.connect('ctt.sqlite')
+    with con:
+        cur = con.cursor()
+        cur.execute('''SELECT rowid FROM siblings WHERE status = ? and sibling = ? and state != ?''', ('open', node, state,))
+        data = cur.fetchone()
+        if data is None:
+            return False
+        else:
+            return True
+
+
+def update_sibling(node, state):
+    con = SQL.connect('ctt.sqlite')
+    with con:
+        cur = con.cursor()
+        cur.execute('''UPDATE siblings SET state = ? WHERE sibling = ? and status = ?''', (state, node, 'open',))
+        print("Updated sibling %s to pbs state: %s" % (node, state))
+
+
 def run_auto(date,severity,assignedto,updatedby,cluster):
     newissuedict = {} 
     if int(maxissuesopen) != int(0):                                                                                                                        
@@ -110,19 +131,21 @@ def run_auto(date,severity,assignedto,updatedby,cluster):
         x,state = state.split('=')
         #known pbs states: 'free', 'job-busy', 'job-exclusive', 
         #'resv-exclusive', offline, down, provisioning, wait-provisioning, stale, state-unknown
-        
-        #add a if sibling_open_check() and update sibling's table entry. when --list or show, will read that table for state
+
+        if sibling_open_check(node, state) is True:
+            update_sibling(node, state)
+
         if node_open_check(node) is True:  #update node state if open issue on node and state changed
             cttissue = check_node_state(node,state)
             if cttissue is None:	#no change in state
                 next
-            else:			#change in state
+            else:			#change in pbs state
                 cttissue = ''.join(cttissue)
                 update_issue(cttissue, 'state', state)  
                 update_issue(cttissue, 'updatedby', 'ctt')
                 update_issue(cttissue, 'updatedtime', date)
                 log_history(cttissue, date, 'ctt', 'state changed to %s' % (state))
- 
+
         elif state in ('state-unknown', 'offline', 'down'):	#if no issue on node, open with states offline and down     
             for item in splitline:
                 if 'comment=' in item:
@@ -207,7 +230,8 @@ def get_cluster():	#used by run_auto
         print("Can't get cluster name, exiting!")
         exit(1)
 
-def get_pbs_node_state(node): #gets state of single node in pbs. Used for sibling states currently     
+def get_pbs_node_state(node): #No longer needed? We should only run pbsnodes during run_auto()  
+#gets state of single node in pbs. Used for sibling states currently     
     if node:
         for line in pbs_states_csv:
             splitline = line.split(",")
@@ -383,7 +407,7 @@ def get_issue_full(cttissue):	#used for the --show option
                     print("Attached Siblings:")
                     sibs = resolve_siblings(hostname)
                     for node in sibs:
-                        state = get_pbs_node_state(node)
+                        state = get_pbs_node_state(node)		#Should we get the state from siblings table?
                         if node != hostname:
                             print('%s state = %s' % (node,state))
                 else:
@@ -421,7 +445,7 @@ def comment_issue(cttissue, date, updatedby, newcomment):
                     cttissue,date,updatedby, comment)
                     VALUES(?, ?, ?, ?)''',
                     (cttissue, date, updatedby, newcomment))
-            print("Comment added to issue %s" % (cttissue))
+            #print("Comment added to issue %s" % (cttissue))
     else: 
         print("Can't add comment to %s. Issue not found or deleted" % (cttissue))
     
@@ -494,7 +518,7 @@ def get_issues(statustype):	#used for the --list option
             if check_has_sibs(cttissue) is True:
                 sibs = resolve_siblings(hostname)
                 for node in sibs:
-                    state = get_pbs_node_state(node)	#
+                    state = get_pbs_node_state(node)	#should we get this from siblings table???
                     issuetitle = "Sibling to %s" % (hostname)
                     issuetype = 'o'
                     if node != hostname:
@@ -535,7 +559,7 @@ def get_issues_vv(statustype):   # -vv option
             if check_has_sibs(cttissue) is True:
                 sibs = resolve_siblings(hostname)
                 for node in sibs:
-                    state = get_pbs_node_state(node)
+                    state = get_pbs_node_state(node)	#should we get this from siblings table?
                     issuetitle = "Sibling to %s" % (hostname)
                     issuetype = 'o'
                     if node != hostname:
@@ -575,7 +599,7 @@ def get_issues_v(statustype):	# -v option
             if check_has_sibs(cttissue) is True:
                 sibs = resolve_siblings(hostname)
                 for node in sibs:
-                    state = get_pbs_node_state(node)
+                    state = get_pbs_node_state(node)    #should we get this from siblings table???
                     issuetitle = "Sibling to %s" % (hostname)
                     issuetype = 'o'
                     if node != hostname:
@@ -616,7 +640,6 @@ def delete_issue(cttissue): #check to make sure admin only runs this???    Add s
 #    else:	#use this else statement???
 #        print("ctt issue %s ALREADY deleted" % (cttissue))
 
-
 def close_issue(cttissue,date,updatedby): #TO DO: need check if status is deleted then print message. check if already closed?    Add sib check and close sib if closing, etc etc etc .
     if issue_deleted_check(cttissue) is False and issue_exists_check(cttissue) is True:
         con = SQL.connect('ctt.sqlite')
@@ -627,9 +650,88 @@ def close_issue(cttissue,date,updatedby): #TO DO: need check if status is delete
             cur.execute('''UPDATE issues SET status = ? WHERE cttissue = ?''', ('closed', cttissue))
             print("ctt issue %s closed" % (cttissue))
     log_history(cttissue,date,updatedby, 'Detached Siblings')
+
+############
+############
+"""
+def close_issue(cttissue,date,updatedby): #TO DO: need check if status is deleted then print message. check if already closed?    Add sib check and close sib if closing, etc etc etc .
+    if issue_deleted_check(cttissue) is False and issue_exists_check(cttissue) is True:
+###        con = SQL.connect('ctt.sqlite')
+###        with con:            
+###            cur = con.cursor()
+###            cur.execute('''UPDATE siblings SET status = ? WHERE cttissue = ?''', ('closed', cttissue))
+###            print("Dummy/Dev message: Detached siblings") 
+###            cur.execute('''UPDATE issues SET status = ? WHERE cttissue = ?''', ('closed', cttissue))
+###            print("ctt issue %s closed" % (cttissue))
+###    log_history(cttissue,date,updatedby, 'Detached Siblings')
 #    else: 	#use this else statement???
 #        print("ctt issue %s not found or deleted" % (cttissue))
 
+        primarynode = get_hostname(cttissue)
+        primarynode = ''.join(primarynode)	#tuple to str
+        nodes2release = []
+
+        con = SQL.connect('ctt.sqlite')
+        with con:
+            cur = con.cursor()
+            if check_for_siblings(cttissue) is False:
+                print("NO SIBLINGS")
+                allnodes = [primarynode]
+                print("1, allnodes: %s" % (allnodes))
+                #allnodes = ' '.join(allnodes)
+                for node in allnodes:
+                    print("2, node: %s" % (node))
+                    cur.execute('''SELECT rowid FROM issues WHERE hostname = ? and cttissue != ? and status = ?''', (node, cttissue, 'open',))
+                    data = cur.fetchone()
+                    if data is None:
+                        print("3, data is None")
+                        print("4, node is: %s" % (node))
+                        nodes2release.append(node)
+                        print("5, nodes2release: %s" % (nodes2release))
+                        allnodes = resolve_siblings(node)
+                        print("6, allnodes/siblings: %s" % (allnodes))
+                        for sibnode in allnodes:
+                            print("7, node,sib: %s" % (sibnode))      # VVVVV add check of parent in table as well. 
+                            cur.execute('''SELECT rowid FROM siblings WHERE sibling = ? and cttissue != ? and status = ?''', (sibnode, cttissue, 'open',))
+                            data = cur.fetchone()
+                            print("8, returned data: %s" % (data))
+                            if data is None:
+                                print("9, sib data is None")
+                                nodes2release.append(sibnode)
+                            else:
+                                if sibnode == primarynode:
+                                    nodes2release.remove(sibnode)
+                                    print("10, removing primary from nodes2release")
+                                print("10, node is in siblings table")
+                                next
+                    else:
+                        print("Node %s is associated with another cttissue. Not resuming!" % (node))
+                print("nodes 2 release are: %s" % (list(set(nodes2release)))) # list(set(thelist)) removes duplicate list entries
+
+            else:
+                print("INSIDE SIBLINGS")        #need to check if sib is a primary too!!!
+                allnodes = resolve_siblings(node)
+                print("1, allnodes: %s" % (allnodes))
+                for node in allnodes:
+                    cur.execute('''SELECT rowid FROM siblings WHERE sibling = ? and status = ?''', (cttissue, 'open',))
+                    data = cur.fetchone()
+                    if data is None:
+                        print("2, sib data is None")
+                        nodes2release.append(node)
+                    else:
+                        print("Node %s is a sibling for another issue. Not resuming!" % (node))
+
+def check_for_siblings(cttissue):
+    con = SQL.connect('ctt.sqlite')
+    with con:
+        cur = con.cursor()
+        cur.execute('''SELECT * from siblings WHERE cttissue = ? and status = ?''', (cttissue, 'open',))
+        if cur.fetchone() is None:
+            return False	#no siblings
+        else:
+            return True     #has siblings
+###########
+"""
 
 def assign_issue(cttissue, assignto):	#assign to another person       
     if issue_deleted_check(cttissue) is False and issue_exists_check(cttissue) is True:
@@ -725,14 +827,15 @@ def checkdb(date):		#checks the ctt db if tables and/or db itself exists. Create
 		info TEXT)''')
 
     with con:
-        cur = con.cursor()	# 1 | 1241 | open | r1i5n24 | r1i5n10
+        cur = con.cursor()	# 1 | 1241 | open | r1i5n24 | r1i5n10 | down
         cur.execute('''CREATE TABLE IF NOT EXISTS siblings(
                 id INTEGER PRIMARY KEY,
                 cttissue TEXT NOT NULL,
                 date TEXT NOT NULL,
                 status TEXT NOT NULL,
                 parent TEXT NOT NULL,
-                sibling TEXT NOT NULL)''')
+                sibling TEXT NOT NULL,
+				state TEXT)''')
 
     return
 
