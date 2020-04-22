@@ -1,12 +1,13 @@
 # List of ideas, features, fixes, improvements...
 
 
-* FIX: Need to update sibling pbs states with run_auto()
-  * first add state column to sibnlings table
-  * second update sibling states during run_auto()
-
 * FIX: pbs state of node not updating. Drained nodes showing jobs
   * Could be that siblings table is not getting auto updated from run_auto()
+
+* strict nodename matching
+  * set in ini file: strict_node_match: True|False
+  * if True: node_match: node1 node2 node3 node4, etc...
+
 * Function to dump everything to a file
 * Improved statistics
 * If can not get pbsnodes, add FATAL ctt issue. Use function in --auto as example.
