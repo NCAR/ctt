@@ -1,8 +1,9 @@
 # List of ideas, features, fixes, improvements...
 
 
-* FIX: pbs state of node not updating. Drained nodes showing jobs
-  * Could be that siblings table is not getting auto updated from run_auto()
+* FIX/Change: 
+  * Put the pbsnodes run inside run_auto() 
+  * Get sibling pbs states from siblings table
 
 * strict nodename matching
   * set in ini file: strict_node_match: True|False
@@ -24,6 +25,13 @@
 
 ########################################
 ```
+
+# When closing/releasing: 
+  1. Another issue with same node?
+  2. In siblings table as sibling for a different issue?
+  3. If has siblings attached, Do the siblings have a cttissue?
+  4. Are siblings in siblings table for another cttissue
+
 check_conflicts(node):
 	nodelist = []
         if check_for_siblings(node) is False:
