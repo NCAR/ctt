@@ -5,9 +5,29 @@
   * Put the pbsnodes run inside run_auto() 
   * Get sibling pbs states from siblings table
 
+* FIX:
+  * maxopen is not working
+
 * strict nodename matching
   * set in ini file: strict_node_match: True|False
   * if True: node_match: node1 node2 node3 node4, etc...
+
+* FIX: if ticket does not exist, it fails:
+```
+^[[A[09:25:57 root@chmgt:/ssg/robertsj/ctt]$ ./ctt.py --close 1003 a
+99
+ctt issue 1003 updated: updatedby
+ctt issue 1003 updated: updatedtime
+Traceback (most recent call last):
+  File "./ctt.py", line 268, in <module>
+    close_issue(args.closevalue[0], date, updatedby)
+  File "/ssg/robertsj/ctt/cttlib.py", line 668, in close_issue
+    node = ''.join(node)
+TypeError: can only join an iterable
+
+```
+
+* Add a default cluster in ini file so its not required to specify a cluster when opening
 
 * Function to dump everything to a file
 * Improved statistics
@@ -29,8 +49,9 @@
 # When closing/releasing: 
   1. Another issue with same node?
   2. In siblings table as sibling for a different issue?
-  3. If has siblings attached, Do the siblings have a cttissue?
-  4. Are siblings in siblings table for another cttissue
+  --> if siblings attached:
+  3. Are siblings in siblings table for another cttissue
+  4. If has siblings attached, Do the siblings have a cttissue?
 
 check_conflicts(node):
 	nodelist = []
