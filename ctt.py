@@ -52,9 +52,11 @@ config.read('ctt.ini')
 defaults = config['DEFAULTS']
 severity = defaults['severity']
 issuestatus = defaults['issuestatus']
+issuetype = defaults['issuetype']
 assignedto = defaults['assignedto']
 attach_location = defaults['attach_location']
-cluster = get_cluster()	#determine the cluster based on the pbsadmin value in ctt.ini
+cluster = defaults['cluster']
+#cluster = get_cluster()	#determine the cluster based on the pbsadmin value in ctt.ini
 
 try: #??????
     if not sys.argv[1]:
@@ -290,7 +292,7 @@ elif '--open' in sys.argv[1]:
     parser = argparse.ArgumentParser(add_help=False, description="Cluster Ticket Tracker Version 1.0.0")
     parser.add_argument('--open', action='store', dest='openvalue', nargs='+', required=True)
     parser.add_argument('-s','--severity', action='store', dest='severityvalue', required=False)
-    parser.add_argument('-c','--cluster', action='store', dest='clustervalue', required=True)
+    parser.add_argument('-c','--cluster', action='store', dest='clustervalue', required=False)
     parser.add_argument('-n','--node', action='store', dest='nodevalue', required=True)
     parser.add_argument('-a','--assign', action='store', dest='assignedtovalue', required=False)
     parser.add_argument('-t', '--ticket', action='store', dest='ticketvalue', required=False)
@@ -299,13 +301,14 @@ elif '--open' in sys.argv[1]:
 
     if args.assignedtovalue:
         assignedto = args.assignedtovalue
-    if not args.ticketvalue:       #tagging an external ticket is optional
+    if not args.ticketvalue:      
         args.ticketvalue = '----'
     if not args.typevalue:
-        args.typevalue = 's'	#can set default ticket type in ini cfg later
+        args.typevalue = issuetype
     if not args.severityvalue:
-        args.severityvalue = '3'    #can set default severity in ini cfg later
-
+        args.severityvalue = severity 
+    if not args.clustervalue:
+        args.clustervalue = cluster
 
     if args.openvalue[0] and args.openvalue[1]:
         test_arg_size(args.openvalue[0],what='issue title',maxchars=100)
@@ -313,7 +316,7 @@ elif '--open' in sys.argv[1]:
         cttissue = new_issue(date, args.severityvalue, args.ticketvalue, 'open', \
                          args.clustervalue, args.nodevalue, args.openvalue[0], \
                          args.openvalue[1], assignedto, updatedby, \
-                         updatedby, args.typevalue, 'unknown', date)	#state (last item) is unknown initially until another run of ctt
+                         updatedby, args.typevalue, 'unknown', date) 
         log_history(cttissue, date, updatedby, 'new issue')
 
 elif '--help' in sys.argv[1] or '-h' in sys.argv[1]:
