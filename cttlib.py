@@ -151,13 +151,13 @@ def run_auto(date,severity,assignedto,updatedby,cluster):
                 update_issue(cttissue, 'updatedtime', date)
                 log_history(cttissue, date, 'ctt', 'state changed to %s' % (state))
 
-        elif state in ('state-unknown', 'offline', 'down'):	#if no issue on node, open with states offline and down     
+        elif state in ('state-unknown', 'offline', 'down'):	#if no issue on node     
             for item in splitline:
                 if 'comment=' in item:
                     x,comment = item.split('=')
                     if comment == ' ':
                         comment = 'Unknown Reason'
-                    if node_open_check(node) is False:	#Prevents duplicate issues on node (doesnt check for sibs)
+                    if node_open_check(node) is False:	#Prevents duplicate issues on node 
                         hostname = node
                         newissuedict[hostname]=comment
     if len(newissuedict) != 0 and len(newissuedict) <= int(maxissuesrun):
@@ -230,16 +230,6 @@ def view_tracker_update(cttissue,updatedby):	#used to update viewtracker column 
             cur.execute('''UPDATE issues SET viewtracker = ? WHERE cttissue = ?''', (userlist, cttissue))
 
 
-def get_cluster():	#used by run_auto
-    if re.search("^ch", socket.gethostname()):
-       return "cheyenne"
-    elif re.search("^la", socket.gethostname()):
-       return "laramie"    
-    else:
-        print("Can't get cluster name, exiting!")
-        exit(1)
-
-
 def get_pbs_sib_state(node):
     con = SQL.connect('ctt.sqlite')
     with con:
@@ -250,14 +240,14 @@ def get_pbs_sib_state(node):
         return state        
 
 
-def set_pbs_offline(node, comment): #fix static admin node below ### NOT USED YET
+def set_pbs_offline(node, comment):  #### NOT USED YET
     if comment:		#do we want to update/change comment???
         return os.popen("%s -Nw %s %s -o -C %s %s" % (clush_path, pbsadmin, pbsnodes_path, comment, node))
     else:
         return run_task("%s -o %s" % (pbsnodes_path, node))   #FIX???
 
 
-def set_pbs_online(node, comment):	#fix static admin node below ### NOT USED YET         # when closing/releasing a sibling node, need to check ctt if another parent issue has sibling.
+def set_pbs_online(node, comment):	#### NOT USED YET    
     if comment:		# we want to clear previous comment out
         return os.popen("%s -Nw %s %s -r -C %s %s" % (clush_path, pbsadmin, pbsnodes_path, comment, node))
     else:
@@ -469,7 +459,8 @@ def comment_issue(cttissue, date, updatedby, newcomment):
             #print("Comment added to issue %s" % (cttissue))
     else: 
         print("Can't add comment to %s. Issue not found or deleted" % (cttissue))
-    
+        exit()
+
     view_tracker_new(cttissue,updatedby,viewnotices)   
     return
 
@@ -497,7 +488,7 @@ def update_issue(cttissue, updatewhat, updatedata):
         print("ctt issue %s not found or deleted" % (cttissue))
     
 
-def check_has_sibs(cttissue):	#check if a cttissue has sibs in open status
+def check_has_sibs(cttissue):
     con = SQL.connect('ctt.sqlite')
     with con:
         cur = con.cursor()
@@ -534,7 +525,6 @@ def get_issues(statustype):	#used for the --list option
             updatedby = (row[12])
             issuetype = (row[13])
             state = (row[14])
-            #updatedtime = (row[15])
             updatedtime = (row[15][0:16])
             viewtracker = (row[16])
             print(fmt("%s" % cttissue, "%s" % date, "%s" % ticket, "%s" % hostname, "%s" % state, \
@@ -675,7 +665,7 @@ def close_and_resume_issue(cttissue,date,updatedby,nodes2resume):
     with con:            
         cur = con.cursor()
         cur.execute('''UPDATE siblings SET status = ? WHERE cttissue = ?''', ('closed', cttissue))
-        print("Detached siblings")	#for testing 
+        #print("Detached siblings")	#for testing 
         cur.execute('''UPDATE issues SET status = ? WHERE cttissue = ?''', ('closed', cttissue))
         print("ctt issue %s closed" % (cttissue))
  

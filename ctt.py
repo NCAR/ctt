@@ -146,7 +146,6 @@ elif '--update' in sys.argv[1]:
                 update_issue(args.issuenumber[0], 'updatedtime', date)
                 view_tracker_new(args.issuenumber[0],updatedby,viewnotices)
                 log_history(args.issuenumber[0],date,updatedby,'updated issue type to: %s' % (args.typevalue))
-                #exit()
         except IndexError:
             parser.print_help()
 
