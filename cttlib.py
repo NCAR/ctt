@@ -35,6 +35,7 @@ import socket
 import sys
 import re
 
+
 config = ConfigParser()
 config.read('ctt.ini')                                                                                                                                                                          
 defaults = config['DEFAULTS'] 
@@ -46,6 +47,7 @@ clush_path = defaults['clush_path']
 maxissuesopen = defaults['maxissuesopen'] #ONLY USED WITH AUTO, CAN STILL MANUALLY OPEN ISSUES
 maxissuesrun = defaults['maxissuesrun']
 
+
 def maxissueopen_issue():
     con = SQL.connect('ctt.sqlite')
     cur = con.cursor()
@@ -53,16 +55,13 @@ def maxissueopen_issue():
     if cur.fetchone() == None:
         return False
 
+
 def get_open_count():
     con = SQL.connect('ctt.sqlite')
     cur = con.cursor()
     cur.execute('''SELECT * FROM issues WHERE status = ?''', ('open',))
     return len(cur.fetchall())
 
-#run_pbsnodes = ['--auto', '--list']	#only run pbsnodes when --auto is run
-#if sys.argv[1] in run_pbsnodes:
-###pbs_states_csv = os.popen("{0} -Nw {1} {2} -av -Fdsv -D,".format(clush_path, pbsadmin, pbsnodes_path)).readlines()
-# need check if len(pbs_states_csv) < n...
 
 def create_attachment(cttissue,filepath,attach_location,date,updatedby):
     import shutil
@@ -189,11 +188,13 @@ def run_auto(date,severity,assignedto,updatedby,cluster):
         log_history(cttissue, date, 'ctt', 'new issue')                                                                                         
         exit(1)
 
+
 def test_arg_size(arg,what,maxchars):
     size = sys.getsizeof(arg)
     if int(size) > int(maxchars):
         print("Maximum argument size of %s characters reached for %s. Exiting!" % (maxchars,what))
         exit(1)
+
 
 def view_tracker_new(cttissue,updatedby,viewnotices):        #used for new issues and updates
     userlist = []                               
@@ -212,6 +213,7 @@ def view_tracker_new(cttissue,updatedby,viewnotices):        #used for new issue
         cur = con.cursor()
         cur.execute('''UPDATE issues SET viewtracker = ? WHERE cttissue = ?''', (userlist, cttissue))
 
+
 def view_tracker_update(cttissue,updatedby):	#used to update viewtracker column when a user runs --show
     con = SQL.connect('ctt.sqlite')
     with con:
@@ -226,6 +228,7 @@ def view_tracker_update(cttissue,updatedby):	#used to update viewtracker column 
             if not userlist:
                 userlist = '----'
             cur.execute('''UPDATE issues SET viewtracker = ? WHERE cttissue = ?''', (userlist, cttissue))
+
 
 def get_cluster():	#used by run_auto
     if re.search("^ch", socket.gethostname()):
@@ -383,6 +386,7 @@ def log_history(cttissue, date, updatedby, info):
     else:
         return
 
+
 def get_issue_full(cttissue):	#used for the --show option
     if issue_exists_check(cttissue) is True:
         con = SQL.connect('ctt.sqlite')
@@ -437,6 +441,7 @@ def get_issue_full(cttissue):	#used for the --show option
     else:
         print("Issue not found")
 
+
 def get_comments(cttissue):	#used for --show option (displays the comments)
     if issue_deleted_check(cttissue) is False and issue_exists_check(cttissue) is True:
         con = SQL.connect('ctt.sqlite')
@@ -468,6 +473,7 @@ def comment_issue(cttissue, date, updatedby, newcomment):
     view_tracker_new(cttissue,updatedby,viewnotices)   
     return
 
+
 def issue_exists_check(cttissue):	#checks if a cttissue exists
     con = SQL.connect('ctt.sqlite')
     with con:
@@ -478,6 +484,7 @@ def issue_exists_check(cttissue):	#checks if a cttissue exists
             return False
         else:
             return True
+
 
 def update_issue(cttissue, updatewhat, updatedata):        
     if issue_deleted_check(cttissue) is False and issue_exists_check(cttissue) is True:
@@ -500,6 +507,7 @@ def check_has_sibs(cttissue):	#check if a cttissue has sibs in open status
             next
         else:
             return True
+
 
 def get_issues(statustype):	#used for the --list option
     cols = "{0:<8}{1:<19}{2:<9}{3:<13}{4:<16}{5:<6}{6:<7}{7:<8}{8:<12}{9:<28}"
@@ -543,6 +551,7 @@ def get_issues(statustype):	#used for the --list option
                                   "%s" % severity, "%s" % issuetype, "%s" % assignedto, "%s" % viewtracker, \
                                   "%s" % issuetitle ))
 
+
 def get_issues_vv(statustype):   # -vv option
     cols = "{0:<8}{1:<19}{2:<9}{3:<13}{4:<16}{5:<6}{6:<7}{7:<8}{8:<12}{9:<12}{10:<8}{11:<10}{12:<19}{13:<10}{14:<20}{15:<22}"  
     fmt = cols.format
@@ -585,6 +594,7 @@ def get_issues_vv(statustype):   # -vv option
                                    "%s" % issuetype, "%s" % assignedto, "%s" % viewtracker, "%s" % cluster, "%s" % issueoriginator, "%s" % updatedby, \
                                    "%s" % updatedtime, "%s" % status, "%s" % issuetitle, "%s" % issuedescription))
 
+
 def get_issues_v(statustype):	# -v option
     cols = "{0:<8}{1:<19}{2:<9}{3:<13}{4:<16}{5:<6}{6:<7}{7:<8}{8:<12}{9:<12}{10:<8}{11:<10}{12:<19}{13:<10}{14:<22}"
     fmt = cols.format
@@ -626,6 +636,7 @@ def get_issues_v(statustype):	# -v option
                                    "%s" % issuetype, "%s" % assignedto, "%s" % viewtracker, "%s" % cluster, "%s" % issueoriginator, "%s" % updatedby, \
                                    "%s" % updatedtime, "%s" % status, "%s" % issuetitle))
 
+
 def issue_closed_check(cttissue):	#TO DO LATER: CHANGE ALL THE issue_xxxx_check functions to get_issue_status(cttissue,STATUS) and return True||False
     con = SQL.connect('ctt.sqlite')
     with con:
@@ -636,6 +647,7 @@ def issue_closed_check(cttissue):	#TO DO LATER: CHANGE ALL THE issue_xxxx_check 
             return False
         else:
             return True
+
 
 def issue_deleted_check(cttissue):	#checks if cttissue is deleted
     con = SQL.connect('ctt.sqlite')
@@ -648,6 +660,7 @@ def issue_deleted_check(cttissue):	#checks if cttissue is deleted
         else:
             return True
 
+
 def delete_issue(cttissue): #check to make sure admin only runs this???    Add sib check and close sibs if deleting???
     if issue_deleted_check(cttissue) is False and issue_exists_check(cttissue) is True:
         con = SQL.connect('ctt.sqlite')
@@ -656,8 +669,6 @@ def delete_issue(cttissue): #check to make sure admin only runs this???    Add s
             cur.execute('''UPDATE issues SET status = ? WHERE cttissue = ?''', ('deleted', cttissue))
             print("ctt issue %s deleted" % (cttissue))
 
-#########
-#########
 
 def close_and_resume_issue(cttissue,date,updatedby,nodes2resume):
     con = SQL.connect('ctt.sqlite')
@@ -679,8 +690,8 @@ def close_and_resume_issue(cttissue,date,updatedby,nodes2resume):
 
     exit()
 
-def close_issue(cttissue, date, updatedby):
 
+def close_issue(cttissue, date, updatedby):
     if issue_deleted_check(cttissue) is False and issue_exists_check(cttissue) is True and check_for_siblings(cttissue) is False:	#no siblings attached to cttissue
         node = get_hostname(cttissue)
         node = ''.join(node)
@@ -743,10 +754,6 @@ def close_issue(cttissue, date, updatedby):
     close_and_resume_issue(cttissue,date,updatedby,nodes2resume)
 
 
-
-############
-############
-
 def check_for_siblings(cttissue):
     con = SQL.connect('ctt.sqlite')
     with con:
@@ -756,6 +763,7 @@ def check_for_siblings(cttissue):
             return False	#no siblings
         else:
             return True     #has siblings
+
 
 def assign_issue(cttissue, assignto):	#assign to another person       
     if issue_deleted_check(cttissue) is False and issue_exists_check(cttissue) is True:
@@ -863,6 +871,7 @@ def checkdb(date):		#checks the ctt db if tables and/or db itself exists. Create
 
     return
 
+
 def show_help():
     print("Cluster Ticket Tracker Version 1.0.0")
 
@@ -870,7 +879,7 @@ def show_help():
 
     --open
 
-		ctt.py --open ISSUETITLE ISSUEDESC -c CLUSTER -n NODE [-a ASSIGNTO]		# Default ASSIGNTO is ssg
+		ctt.py --open ISSUETITLE ISSUEDESC [-c CLUSTER] -n NODE [-a ASSIGNTO]		# Default ASSIGNTO is ssg
 
 		Examples:
 		ctt.py --open "Failed dimm on r1i1n1" "Description here" -c cheyenne -s 1 -n r1i1n1 -a casg
@@ -911,8 +920,7 @@ def show_help():
 		-a ASSIGNEDTO, --assign ASSIGNEDTO                 # Assign issue to another group. Default is ssg
 		-i ISSUETITLE, --issuetitle ISSUETITLE             # Update/change the issue's title
 		-d ISSUEDESC, --issuedesc ISSUEDESC                # Update/change the issue's description 
-		-x {h,s,t,u,o}, --type {h,s,t,u,o}                 # Issue Type {Hardware, Software, Test, Unknown, Other}
-                # Do we want the ability to reopen a closed ticket?
+		-x {h!,h,s,t,u,o}, --type {h!,h,s,t,u,o}           # Issue Type {Hardware(with siblings), Hardware, Software, Test, Unknown, Other}
 
 		Examples:
 		ctt.py --update 1039 -s 1 -c cheyenne -n r1i1n1 -t 689725 -a casg -i "This is a new title" -d "This is a new issue description"
@@ -936,11 +944,17 @@ def show_help():
 
     --reopen
 
-        ctt.py --reopen ISSUENUMBER COMMENT
+		ctt.py --reopen ISSUENUMBER COMMENT
 
-        Examples:
+		Examples:
 		ctt.py --reopen 10421 "Need to reopen this issue"
 
+    --attach
+	
+		ctt.py --attach ISSUENUMBER FILE
+  
+		Examples:
+		ctt.py --rattach 1098 output.log
 
     --delete
 
@@ -953,15 +967,4 @@ def show_help():
 
     exit()
 
-#############                                                                                                                                               
-#if len(pbs_states_csv) < 5555:                                                                                                                              
-#    print('sorry')                                                                                                                                          
-#    details = "Can not get pbsnodes csv file. If this issue persists, escalate this ticket."                                                                
-#    cttissue = new_issue(date, '1', '---', 'open', \
-#                          cluster, 'FATAL', 'CAN NOT GET PBSNODES', \
-#                          details, 'FATAL', 'FATAL', \
-#                          'FATAL', 'o', 'FATAL', date)
-#    log_history(cttissue, date, updatedby, 'new issue')                                                                                                     
-#    exit(1)                                                                                                                                                 
-#############                                               
 
