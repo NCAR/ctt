@@ -61,7 +61,7 @@ def get_open_count():
 
 #run_pbsnodes = ['--auto', '--list']	#only run pbsnodes when --auto is run
 #if sys.argv[1] in run_pbsnodes:
-pbs_states_csv = os.popen("{0} -Nw {1} {2} -av -Fdsv -D,".format(clush_path, pbsadmin, pbsnodes_path)).readlines()
+###pbs_states_csv = os.popen("{0} -Nw {1} {2} -av -Fdsv -D,".format(clush_path, pbsadmin, pbsnodes_path)).readlines()
 # need check if len(pbs_states_csv) < n...
 
 def create_attachment(cttissue,filepath,attach_location,date,updatedby):
@@ -88,11 +88,11 @@ def create_attachment(cttissue,filepath,attach_location,date,updatedby):
         print("Error: File not attached, unknown error")
 
 
-def sibling_open_check(node, state):
+def sibling_open_check(node):
     con = SQL.connect('ctt.sqlite')
     with con:
         cur = con.cursor()
-        cur.execute('''SELECT rowid FROM siblings WHERE status = ? and sibling = ? and state != ?''', ('open', node, state,))
+        cur.execute('''SELECT rowid FROM siblings WHERE status = ? and sibling = ?''', ('open', node,))
         data = cur.fetchone()
         if data is None:
             return False
@@ -109,6 +109,12 @@ def update_sibling(node, state):
 
 
 def run_auto(date,severity,assignedto,updatedby,cluster):
+    try:
+        pbs_states_csv = os.popen("{0} -Nw {1} {2} -av -Fdsv -D,".format(clush_path, pbsadmin, pbsnodes_path)).readlines()
+    except:
+        print('Can not get pbsnodes data from admin node, exiting!')
+        exit()
+
     newissuedict = {} 
     if int(maxissuesopen) != int(0):                                                                                                                        
         open_count = get_open_count()                                                                                                                       
@@ -132,7 +138,7 @@ def run_auto(date,severity,assignedto,updatedby,cluster):
         #known pbs states: 'free', 'job-busy', 'job-exclusive', 
         #'resv-exclusive', offline, down, provisioning, wait-provisioning, stale, state-unknown
 
-        if sibling_open_check(node, state) is True:
+        if sibling_open_check(node) is True:
             update_sibling(node, state)
 
         if node_open_check(node) is True:  #update node state if open issue on node and state changed
@@ -169,7 +175,7 @@ def run_auto(date,severity,assignedto,updatedby,cluster):
             issuetitle = issuedescription = comment
             cttissue = new_issue(date,severity,ticket,status,cluster,hostname,issuetitle, \
                                  issuedescription,assignedto,issueoriginator,updatedby,issuetype,state,updatedtime)                        
-            print("%s state is %s with comment: %s" %(node, state, comment)) 
+            print("%s state is %s with comment: %s" %(hostname, state, comment))  #####
             log_history(cttissue, date, 'ctt', 'new issue')
     elif len(newissuedict) >= int(maxissuesrun):
         print('Maximum number of issues reached for --auto')                                                                  
@@ -230,14 +236,15 @@ def get_cluster():	#used by run_auto
         print("Can't get cluster name, exiting!")
         exit(1)
 
-def get_pbs_node_state(node): #No longer needed? We should only run pbsnodes during run_auto()  
-#gets state of single node in pbs. Used for sibling states currently     
-    if node:
-        for line in pbs_states_csv:
-            splitline = line.split(",")
-            state = splitline[5]
-            x,state = state.split('=')
-    return state        
+
+def get_pbs_sib_state(node):
+    con = SQL.connect('ctt.sqlite')
+    with con:
+        cur = con.cursor()
+        cur.execute('''SELECT state FROM siblings WHERE sibling = ? and status = ?''', (node, 'open',))
+        state = cur.fetchone()
+        #print(state)	#test
+        return state        
 
 
 def set_pbs_offline(node, comment): #fix static admin node below ### NOT USED YET
@@ -246,11 +253,13 @@ def set_pbs_offline(node, comment): #fix static admin node below ### NOT USED YE
     else:
         return run_task("%s -o %s" % (pbsnodes_path, node))   #FIX???
 
+
 def set_pbs_online(node, comment):	#fix static admin node below ### NOT USED YET         # when closing/releasing a sibling node, need to check ctt if another parent issue has sibling.
     if comment:		# we want to clear previous comment out
         return os.popen("%s -Nw %s %s -r -C %s %s" % (clush_path, pbsadmin, pbsnodes_path, comment, node))
     else:
         return os.popen("%s -Nw %s %s -r %s" % (clush_path, pbsadmin, pbsnodes_path, node))
+
 
 def get_hostname(cttissue):
     con = SQL.connect('ctt.sqlite')
@@ -260,6 +269,7 @@ def get_hostname(cttissue):
         hostname = cur.fetchone()
         if hostname:
             return hostname
+
 
 def add_siblings(cttissue,date,updatedby): #need to run a drain function (set_pbs_offline()) on the siblings when adding!!!
     node = get_hostname(cttissue)
@@ -285,6 +295,7 @@ def add_siblings(cttissue,date,updatedby): #need to run a drain function (set_pb
         log_history(cttissue, date, updatedby, info)
     return
 
+
 def node_to_tuple(n):	#used by add_siblings()
     m = re.match("([rR])([0-9]+)([iI])([0-9]+)([nN])([0-9]+)", n)
     if m is not None:
@@ -292,6 +303,7 @@ def node_to_tuple(n):	#used by add_siblings()
         return (int(m.group(2)), int(m.group(4)), int(m.group(6)))
     else:
         return None
+
 
 def resolve_siblings(node): 	#used by add_siblings()
     nodes_per_blade = 4
@@ -309,6 +321,7 @@ def resolve_siblings(node): 	#used by add_siblings()
             result.append(nodename)
     return result
 
+
 def check_node_state(node, state): 	#checks if node has open issue, returns cttissue number
     con = SQL.connect('ctt.sqlite')
     with con:
@@ -317,6 +330,7 @@ def check_node_state(node, state): 	#checks if node has open issue, returns ctti
         result = cur.fetchone()
         if result:
             return result
+
 
 def node_open_check(node):	#checks if node has open issue
     con = SQL.connect('ctt.sqlite')
@@ -329,10 +343,12 @@ def node_open_check(node):	#checks if node has open issue
         else:
             return True    
 
+
 def check_nolocal():                                                                                                                                                      
     if os.path.isfile('/etc/nolocal'):                                                                                                                                                
         print("/etc/nolocal exists, exiting!")
         exit(1)
+
 
 def get_history(cttissue):	#used only when issuing --show with -d option
     if issue_exists_check(cttissue):
@@ -346,7 +362,6 @@ def get_history(cttissue):	#used only when issuing --show with -d option
             cur.execute('''SELECT * FROM history WHERE cttissue = ?''', (cttissue,))
             for row in cur:
                 date = (row[2][0:16])
-                #date = date.replace('T', ' @ ', 1)
                 updatedby = (row[3])
                 info = (row[4])
 
@@ -407,8 +422,9 @@ def get_issue_full(cttissue):	#used for the --show option
                     print("Attached Siblings:")
                     sibs = resolve_siblings(hostname)
                     for node in sibs:
-                        state = get_pbs_node_state(node)		#Should we get the state from siblings table?
                         if node != hostname:
+                            state = get_pbs_sib_state(node)
+                            state = ' '.join(state)
                             print('%s state = %s' % (node,state))
                 else:
                     print("Attached Siblings: None")
@@ -518,10 +534,11 @@ def get_issues(statustype):	#used for the --list option
             if check_has_sibs(cttissue) is True:
                 sibs = resolve_siblings(hostname)
                 for node in sibs:
-                    state = get_pbs_node_state(node)	#should we get this from siblings table???
-                    issuetitle = "Sibling to %s" % (hostname)
-                    issuetype = 'o'
                     if node != hostname:
+                        state = get_pbs_sib_state(node) 
+                        state = ''.join(state)
+                        issuetitle = "Sibling to %s" % (hostname)
+                        issuetype = 'o'
                         print(fmt("%s" % cttissue, "%s" % date, "%s" % ticket, "%s" % node, "%s" % state, \
                                   "%s" % severity, "%s" % issuetype, "%s" % assignedto, "%s" % viewtracker, \
                                   "%s" % issuetitle ))
@@ -559,11 +576,12 @@ def get_issues_vv(statustype):   # -vv option
             if check_has_sibs(cttissue) is True:
                 sibs = resolve_siblings(hostname)
                 for node in sibs:
-                    state = get_pbs_node_state(node)	#should we get this from siblings table?
-                    issuetitle = "Sibling to %s" % (hostname)
-                    issuetype = 'o'
                     if node != hostname:
-                         print(fmt("%s" % cttissue, "%s" % date, "%s" % ticket, "%s" % hostname, "%s" % state, "%s" % severity, \
+                        state = get_pbs_sib_state(node) 
+                        state = ''.join(state)
+                        issuetitle = "Sibling to %s" % (hostname)
+                        issuetype = 'o'
+                        print(fmt("%s" % cttissue, "%s" % date, "%s" % ticket, "%s" % hostname, "%s" % state, "%s" % severity, \
                                    "%s" % issuetype, "%s" % assignedto, "%s" % viewtracker, "%s" % cluster, "%s" % issueoriginator, "%s" % updatedby, \
                                    "%s" % updatedtime, "%s" % status, "%s" % issuetitle, "%s" % issuedescription))
 
@@ -599,11 +617,12 @@ def get_issues_v(statustype):	# -v option
             if check_has_sibs(cttissue) is True:
                 sibs = resolve_siblings(hostname)
                 for node in sibs:
-                    state = get_pbs_node_state(node)    #should we get this from siblings table???
-                    issuetitle = "Sibling to %s" % (hostname)
-                    issuetype = 'o'
                     if node != hostname:
-                         print(fmt("%s" % cttissue, "%s" % date, "%s" % ticket, "%s" % hostname, "%s" % state, "%s" % severity, \
+                        state = get_pbs_sib_state(node) 
+                        state = ''.join(state)
+                        issuetitle = "Sibling to %s" % (hostname)
+                        issuetype = 'o'
+                        print(fmt("%s" % cttissue, "%s" % date, "%s" % ticket, "%s" % hostname, "%s" % state, "%s" % severity, \
                                    "%s" % issuetype, "%s" % assignedto, "%s" % viewtracker, "%s" % cluster, "%s" % issueoriginator, "%s" % updatedby, \
                                    "%s" % updatedtime, "%s" % status, "%s" % issuetitle))
 
