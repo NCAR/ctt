@@ -1,12 +1,7 @@
 # List of ideas, features, fixes, improvements...
 
 
-* FIX/Change: 
-  * Put the pbsnodes run inside run_auto() 
-  * Get sibling pbs states from siblings table
-
-* FIX:
-  * maxopen is not working
+  * TEST: maxopen is working?
 
 * strict nodename matching
   * set in ini file: strict_node_match: True|False
@@ -27,6 +22,8 @@ TypeError: can only join an iterable
 
 ```
 
+* Log history when a sibling state changes
+
 * Add a default cluster in ini file so its not required to specify a cluster when opening
 
 * Function to dump everything to a file
@@ -42,30 +39,4 @@ TypeError: can only join an iterable
 
 * convert to mariadb 
 
-
-########################################
-```
-
-# When closing/releasing: 
-  1. Another issue with same node?
-  2. In siblings table as sibling for a different issue?
-  --> if siblings attached:
-  3. Are siblings in siblings table for another cttissue
-  4. If has siblings attached, Do the siblings have a cttissue?
-
-check_conflicts(node):
-	nodelist = []
-        if check_for_siblings(node) is False:
-            if check_open_node(node) is True:
-                 release_node(node)
-            else:
-                print("Node associated with another CTT issue, Not releasing node")
-        else:
-            nodelist.append(get_siblings(node))
-            for node in nodelist:
-               open database
-               if check_open_node(node) is True:
-                   print("not releasing %s" % (node))
-                   remove node from nodelist
-```                
 
