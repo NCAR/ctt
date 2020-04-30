@@ -1,6 +1,25 @@
 # List of ideas, features, fixes, improvements...
 
 
+* FIX ME: Just send the node to the list as the if-has-sibs check does!
+```
+[03:03:50 root@chmgt:/ssg/robertsj/ctt]$ ./ctt.py --close 1098 asd
+ctt issue 1098 updated: updatedby
+ctt issue 1098 updated: updatedtime
+There is another issue for this node, closing cttissue, but not resuming in pbs - 1
+ctt issue 1098 closed
+Traceback (most recent call last):
+  File "./ctt.py", line 269, in <module>
+      close_issue(args.closevalue[0], date, updatedby)
+	    File "/ssg/robertsj/ctt/cttlib.py", line 703, in close_issue
+		    close_and_resume_issue(cttissue,date,updatedby,nodes2resume)                
+			  File "/ssg/robertsj/ctt/cttlib.py", line 673, in close_and_resume_issue
+			      print("ctt issue %s closed" % (cttissue))
+				  sqlite3.OperationalError: database is locked
+
+```
+
+
   * TEST: maxopen is working?
 
 * strict nodename matching

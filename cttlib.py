@@ -507,7 +507,10 @@ def get_issues(statustype):	#used for the --list option
     con = SQL.connect('ctt.sqlite')
     with con:
         cur = con.cursor()
-        cur.execute('''SELECT * FROM issues WHERE status = ? ORDER BY id ASC''', (statustype,))
+        if 'any' in statustype:
+            cur.execute('''SELECT * FROM issues''')
+        else:
+            cur.execute('''SELECT * FROM issues WHERE status = ? ORDER BY id ASC''', (statustype,))
         for row in cur:
             cttissue = (row[1])  #broke up all cells just-in-case we need them. Can remove later what isnt needed.
             date = (row[2][0:16])
@@ -549,7 +552,10 @@ def get_issues_vv(statustype):   # -vv option
     con = SQL.connect('ctt.sqlite')
     with con:
         cur = con.cursor()
-        cur.execute('''SELECT * FROM issues WHERE status = ? ORDER BY id ASC''', (statustype,))
+        if 'any' in statustype:
+            cur.execute('''SELECT * FROM issues''')
+        else:
+            cur.execute('''SELECT * FROM issues WHERE status = ? ORDER BY id ASC''', (statustype,))
         for row in cur:  #-v option
             cttissue = (row[1])                                                                                                                                    
             date = (row[2][0:16])                                                                                                                                  
@@ -592,7 +598,10 @@ def get_issues_v(statustype):	# -v option
     con = SQL.connect('ctt.sqlite')
     with con:
         cur = con.cursor()
-        cur.execute('''SELECT * FROM issues WHERE status = ? ORDER BY id ASC''', (statustype,))
+        if 'any' in statustype:
+            cur.execute('''SELECT * FROM issues''')
+        else:
+            cur.execute('''SELECT * FROM issues WHERE status = ? ORDER BY id ASC''', (statustype,))
         for row in cur:  #-v option
             cttissue = (row[1])                                                                                                                                    
             date = (row[2][0:16])                                                                                                                                  
@@ -892,7 +901,7 @@ def show_help():
 
 		Examples:
 		ctt.py --list               # Shows all open                                                                                                                                                             
-		ctt.py --list -s closed     # Options: open, closed, deleted 
+		ctt.py --list -s closed     # Options: open, closed, deleted, any 
 
  
     --update

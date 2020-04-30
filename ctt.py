@@ -89,7 +89,7 @@ elif '--list' in sys.argv[1]:
     # ./ctt.py --list -s closed	# Options: open, closed, deleted
     parser = argparse.ArgumentParser(add_help=False, description="Cluster Ticket Tracker Version 1.0.0")
     parser.add_argument('--list', action='store_true', dest='listvalue', default=True, required=True)
-    parser.add_argument('-s', action='store', dest='statusvalue', choices=('open', 'closed', 'deleted'), required=False)
+    parser.add_argument('-s', action='store', dest='statusvalue', choices=('open', 'closed', 'deleted', 'any'), required=False)
     parser.add_argument('-v', action='store_true', dest='verbosevalue', default=False, required=False)
     parser.add_argument('-vv', action='store_true', dest='vverbosevalue', default=False, required=False)
     args = parser.parse_args()
