@@ -120,18 +120,18 @@ def run_auto(date,severity,assignedto,updatedby,cluster):
         exit(1)
 
     newissuedict = {} 
-    if int(maxissuesopen) != int(0):                                                                                                                        
-        open_count = get_open_count()                                                                                                                       
-        if open_count >= int(maxissuesopen):                                                                                                                
-            if maxissueopen_issue() is False:                                                                                                               
-                print('Maximum number of issues (%s) reached for --auto' % (maxissuesopen))                                                                 
-                print('Can not process --auto')                                                                                                             
-                details = "To gather nodes and failures, increase maxissuesopen"                                                                            
+    if int(maxissuesopen) != int(0):
+        open_count = get_open_count()
+        if open_count >= int(maxissuesopen):
+            if maxissueopen_issue() is False:
+                print('Maximum number of issues (%s) reached for --auto' % (maxissuesopen))
+                print('Can not process --auto')
+                details = "To gather nodes and failures, increase maxissuesopen"
                 cttissue = new_issue(date, '1', '---', 'open', \
                             cluster, 'FATAL', 'MAX OPEN REACHED', \
                             details, 'FATAL', 'FATAL', \
-                            'FATAL', 'o', 'FATAL', date)                                                                                                    
-                log_history(cttissue, date, updatedby, 'new issue')                                                                                         
+                            'FATAL', 'o', 'FATAL', date)
+                log_history(cttissue, date, updatedby, 'new issue')
             exit(1) 
     for line in pbs_states_csv:
         splitline = line.split(",")
@@ -199,6 +199,26 @@ def test_arg_size(arg,what,maxchars):
     if int(size) > int(maxchars):
         print("Maximum argument size of %s characters reached for %s. Exiting!" % (maxchars,what))
         exit(1)
+
+
+def update_ticket(cttissue, ticketvalue):
+    con = SQL.connect('ctt.sqlite')
+    with con:
+        cur = con.cursor()
+        cur.execute('''SELECT * FROM issues WHERE cttissue = ?''', (cttissue,))
+        for row in cur:
+            ticketlist = (row[4])
+            ticketlist = ticketlist.split(',')
+            if '---' in ticketlist:
+                ticketlist.remove('---')
+            if ticketvalue in ticketlist:
+                ticketlist.remove(ticketvalue)
+            else:
+                ticketlist.append(ticketvalue)
+            ticketlist = ','.join(ticketlist)
+            if not ticketlist:
+                ticketlist = '---'
+            cur.execute('''UPDATE issues SET ticket = ? WHERE cttissue = ?''', (ticketlist, cttissue,))
 
 
 def view_tracker_new(cttissue,updatedby,viewnotices):        #used for new issues and updates

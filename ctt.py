@@ -220,13 +220,24 @@ elif '--update' in sys.argv[1]:
     if args.ticketvalue:
         try:
             if args.issuenumber[0]:
-                update_issue(args.issuenumber[0], 'ticket', args.ticketvalue)
+                update_ticket(args.issuenumber[0], args.ticketvalue)
                 update_issue(args.issuenumber[0], 'updatedby', updatedby)
                 update_issue(args.issuenumber[0], 'updatedtime', date)
                 view_tracker_new(args.issuenumber[0],updatedby,viewnotices)
-                log_history(args.issuenumber[0],date,updatedby,'updated ticket to: %s' % (args.ticketvalue))
+                log_history(args.issuenumber[0],date,updatedby,'toggled ticket: %s' % (args.ticketvalue))
         except IndexError:
             parser.print_help()
+
+#    if args.ticketvalue:
+#        try:
+#            if args.issuenumber[0]:
+#                update_issue(args.issuenumber[0], 'ticket', args.ticketvalue)
+#                update_issue(args.issuenumber[0], 'updatedby', updatedby)
+#                update_issue(args.issuenumber[0], 'updatedtime', date)
+#                view_tracker_new(args.issuenumber[0],updatedby,viewnotices)
+#                log_history(args.issuenumber[0],date,updatedby,'updated ticket to: %s' % (args.ticketvalue))
+#        except IndexError:
+#            parser.print_help()
 
 elif '--comment' in sys.argv[1]: 
     # ./ctt.py --comment 12390 "Need an update"
