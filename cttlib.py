@@ -104,15 +104,20 @@ def update_sibling(node, state):
     with con:
         cur = con.cursor()
         cur.execute('''UPDATE siblings SET state = ? WHERE sibling = ? and status = ?''', (state, node, 'open',))
-        print("Updated sibling %s to pbs state: %s" % (node, state))
-
+        #print("Updated sibling %s to pbs state: %s" % (node, state))	#test
 
 def run_auto(date,severity,assignedto,updatedby,cluster):
     try:
         pbs_states_csv = os.popen("{0} -Nw {1} {2} -av -Fdsv -D,".format(clush_path, pbsadmin, pbsnodes_path)).readlines()
     except:
-        print('Can not get pbsnodes data from admin node, exiting!')
-        exit()
+        print('Can not process --auto')
+        details = "Can not get pbsnodes from %s" % (pbsadmin)
+        cttissue = new_issue(date, '1', '---', 'open', \
+                   cluster, 'FATAL', 'Can not get pbsnodes', \
+                   details, 'FATAL', 'FATAL', \
+                   'FATAL', 'o', 'FATAL', date)
+        log_history(cttissue, date, 'ctt', 'new issue')
+        exit(1)
 
     newissuedict = {} 
     if int(maxissuesopen) != int(0):                                                                                                                        
@@ -137,7 +142,7 @@ def run_auto(date,severity,assignedto,updatedby,cluster):
         #known pbs states: 'free', 'job-busy', 'job-exclusive', 
         #'resv-exclusive', offline, down, provisioning, wait-provisioning, stale, state-unknown
 
-        if sibling_open_check(node) is True:
+        if sibling_open_check(node) is True:	#update sibling node state if open exists
             update_sibling(node, state)
 
         if node_open_check(node) is True:  #update node state if open issue on node and state changed
@@ -507,7 +512,6 @@ def get_issues(statustype):	#used for the --list option
     con = SQL.connect('ctt.sqlite')
     with con:
         cur = con.cursor()
-        print(statustype)
         if 'all' in statustype:
             cur.execute('''SELECT * FROM issues ORDER BY id ASC''')
         else:
