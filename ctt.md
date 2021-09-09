@@ -1,84 +1,98 @@
-Cluster Ticket Tracker Version 1.0.0
-    
-    --auto
-                ctt.py --auto   
+--open
 
-    --attach
-                ctt.py --attach ISSUENUMBER FILEPATH
+                ctt --open ISSUETITLE ISSUEDESC -n NODE
+                # You may open multiple issues with a comma separated list such as r1i1n1,r4i3n12,++
 
                 Examples:
-                ctt.py --attach 1020 /tmp/ipmi_sdr_list.out
+                ctt --open "Persistent memory errors" "Please open HPE ticket for persistent memory errors on P2-DIMM1G" -n r1i1n1
+                ctt --open "Will not boot" "Please open a severity 1 HPE ticket to determine why this node will not boot" -n r1i1n1 -a casg -s1
+                ctt --open "Persistent memory errors" "Persistent memory errors on P2-DIMM1G. HPE ticket already opened" -n r1i1n1 -t HPE48207411
 
- 
-    --open      
-                ctt.py --open ISSUETITLE ISSUEDESC -c CLUSTER -n NODE [-a ASSIGNTO]             # Default ASSIGNTO is ssg
+                Optional arguments:
+                -s, --severity, Choices: {1, 2, 3, 4}
+                -c, --cluster, 
+                -a, --assign, 
+                -t, --ticket, 
+                -x, --type, Choices: {h, s, t, u, o}    #Hardware, Software, Testing, Unknown, Other
+
+--show
+
+                ctt --show ISSUENUMBER
                 
                 Examples:
-                ctt.py --open "Failed dimm on r1i1n1" "Description here" -c cheyenne -s 1 -n r1i1n1 -a casg
-    
-    
-    --show      
-                ctt.py --show ISSUENUMBER [-d]
-                
-                Examples:
-                ctt.py --show 1045
-                
+                ctt --show 1045
+                ctt --show 1031 -d
+
                 Optional Arguments:
-                -d          #Show detail/history of ticket
-    
-    
-    --list      
-                ctt.py --list [-s {open,closed,deleted}]
-				[-v] [-vv]
-                
-                Examples:
-                ctt.py --list               # Shows all open                                                                                         
-                ctt.py --list -s closed     # Options: open, closed, deleted
-                ctt.py --list -s closed -vv
+                -d     #Show detail/history of ticket
 
-    --update    
-                ctt.py --update ISSUENUMBER [-s {1,2,3,4}]
-                                                [-c CLUSTER] [-n NODE] [-t TICKET]
-                                                [-a ASSIGNEDTO]
-                
+--list
+
+                ctt --list
+
+                Examples:
+                ctt --list
+                ctt --list -vv
+                ctt --list -s closed -v
+
                 Optional Arguments:
-                -s {1,2,3,4}, --severity {1,2,3,4}                 # Update issue severity. Default is 3
-                -c CLUSTER, --cluster CLUSTER                      # Update clustername
-                -n NODE, --node NODE                               # Update node name
-                -t TICKET, --ticket TICKET                         # Update external ticket such as an ev number
-                -a ASSIGNEDTO, --assign ASSIGNEDTO                 # Assign issue to another group. Default is ssg
-                -i ISSUETITLE, --issuetitle ISSUETITLE             # Update/change the issue's title
-                -d ISSUEDESC, --issuedesc ISSUEDESC                # Update/change the issue's description 
-                -x {h,h!,s,t,u,o}, --type {h,h!,s,t,u,o}           # Issue Type {Hardware, Software, Test, Unknown, Other}
-                                                                     h! will mark as hardware AND mark all siblings 
-                Examples:
-                ctt.py --update 1039 -s 1 -c cheyenne -n r1i1n1 -t 689725 -a casg -i "This is a new title" -d "This is a new issue description"
-                ctt.py --update 1039 -x h!
+                -v
+                -vv
+                -s, Choices: {Open, Closed, All}
 
+--update
 
-    --comment
-                ctt.py --comment ISSUENUMBER COMMENT
+                ctt --update ISSUENUMBER ARGUMENTS++
+                # You may update multiple issues with a comma separated list of ISSUENUMBERs such as 1031,1022,1009,++
 
                 Examples:
-                ctt.py --comment 12390 "Need an update"
+                ctt --update 1039 -s 1 -c cheyenne -n r1i1n1 -t 689725 -a casg -i "This is a new title" -d "This is a new issue description"
+                ctt --update 1092 -s 1
 
+
+                Optional Arguments:
+                -s, --severity, Choices: {1,2,3,4}
+                -c, --cluster
+                -n, --node                                    #WARNING: Changing the node name will NOT drain a node nor resume the old node name
+                -t, --ticket
+                -a , --assign
+                -i , --issuetitle
+                -d , --issuedesc
+                -x, --type, Choices: {h!,h,s,t,u,o}           #Issue Type {Hardware(with siblings), Hardware, Software, Test, Unknown, Other}
+
+--comment
+
+                ctt --comment ISSUENUMBER COMMENT
+                # You may comment multiple issues with a comma separated list of ISSUENUMBERs such as 1011,1002,1043,++
                 
-    --close
-                ctt.py --close ISSUENUMBER COMMENT
+                Example:
+                ctt --comment 1008 "Need an update on this issue"
+
+--close
+
+                ctt --close ISSUENUMBER COMMENT
+                # You may close multiple issues with a comma separated list such as 1011,1002,1043,++
+
+                Example:
+                ctt --close 1082 "Issue resolved after reseat"
+
+--reopen
+
+                ctt --reopen ISSUENUMBER COMMENT
+                # You may reopen multiple issues with a comma separated list such as 1011,1002,1043,++
 
                 Examples:
-                ctt.py --close 10282 "Issue resolved"
-                                                
+                ctt --reopen 1042 "Need to reopen this issue. Still seeing memory failures."
 
-    --reopen                                                                                                                                                                             
-                ctt.py --reopen ISSUENUMBER COMMENT                                                                                                                                              
-                Examples:                                                                                                                                                               
-                ctt.py --reopen 10421 "Need to reopen this issue"   
+--attach
+        
+                ctt --attach ISSUENUMBER FILE  #absolute path
 
+                Examples:
+                ctt --attach 1098 /ssg/tmp/output.log
 
-    --delete	#FUTURE FEATURE. Only the cttadmin can delete issues.
-                ctt.py --delete ISSUENUMBER COMMENT
+--stats
 
-                examples:
-                ctt.py --delete 10101 "Duplicate issue"
+                ctt --stats
+                # The output will be in csv format.
 
