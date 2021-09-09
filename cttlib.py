@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #Copyright (c) 2020, University Corporation for Atmospheric Research
 #All rights reserved.
-#
+##
 #Redistribution and use in source and binary forms, with or without 
 #modification, are permitted provided that the following conditions are met:
 #
@@ -27,6 +27,7 @@
 #WHETHER IN CONTRACT, STRICT LIABILITY,
 #OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 #OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+
 import sqlite3 as SQL
 import textwrap
 from configparser import ConfigParser 
@@ -34,18 +35,55 @@ import os
 import socket
 import sys
 import re
-
+import getpass
 
 config = ConfigParser()
 config.read('ctt.ini')                                                                                                                                                                          
 defaults = config['DEFAULTS'] 
 pbsadmin = defaults['pbsadmin']
 users = config['USERS']
-viewnotices = users['viewnotices']
 pbsnodes_path = defaults['pbsnodes_path']                                                                                                
 clush_path = defaults['clush_path']
 maxissuesopen = defaults['maxissuesopen'] #ONLY USED WITH AUTO, CAN STILL MANUALLY OPEN ISSUES
 maxissuesrun = defaults['maxissuesrun']
+pbs_enforcement = defaults['pbs_enforcement'] #with False, will not resume or offline nodes in pbs
+
+#Get viewnotices list from ctt.ini
+userslist = []
+usersdict = dict(config.items('USERS'))
+
+for key in usersdict:
+    userslist.append(key)
+    userslist = list(set(userslist))  #remove duplicates in list
+    viewnotices = ' '.join(userslist) #list to str
+
+#Get valid groups
+def GetGroups(dict, user):
+    groupsList = []
+    itemsList = dict.items()
+    for item in itemsList:
+        groupsList.append(item[0])
+    return groupsList
+
+#Get users group name
+def GetUserGroup(dict, user):
+    userList = []
+    itemsList = dict.items()
+    for item in itemsList:
+        if user in item[1]:
+            userList.append(item[0])
+    if not userList:
+        print("Your username is not found in configuration, Exiting!")
+        exit()
+    UserGroup = ''.join(userList)
+    return UserGroup
+
+
+def strict_node_match_check(nodevalue,strict_node_match):
+    if nodevalue in strict_node_match:
+        return(True)
+    else:
+        return(False)
 
 
 def maxissueopen_issue():
@@ -72,7 +110,7 @@ def create_attachment(cttissue,filepath,attach_location,date,updatedby):
         print('Attachment root location does not exist. Check ctt.ini attach_location setting')
         exit(1)
     if issue_exists_check(cttissue) is False:
-        print('ctt issue %s is not open. Can not attach a file to a closed, deleted, or nonexisting issue' % (cttissue))
+        print('Issue %s is not open. Can not attach a file to a closed, deleted, or nonexisting issue' % (cttissue))
         exit(1)
     newdir = "%s/%s" % (attach_location,cttissue)
     if os.path.exists(newdir) is False:
@@ -104,18 +142,31 @@ def update_sibling(node, state):
     with con:
         cur = con.cursor()
         cur.execute('''UPDATE siblings SET state = ? WHERE sibling = ? and status = ?''', (state, node, 'open',))
-        #print("Updated sibling %s to pbs state: %s" % (node, state))	#test
 
-def run_auto(date,severity,assignedto,updatedby,cluster):
+
+def get_THIS_IS_A_BAD_NODE(hostname):   #rippersnapper needs to enforce via cron on nodes for this to work correctly.
     try:
-        pbs_states_csv = os.popen("{0} -Nw {1} {2} -av -Fdsv -D,".format(clush_path, pbsadmin, pbsnodes_path)).readlines()
+        issuetitle = os.popen("{0} -t30 -Nw {1} '[ -f /etc/THIS_IS_A_BAD_NODE.ncar ] && cat /etc/THIS_IS_A_BAD_NODE.ncar;' 2>/dev/null".format(clush_path, hostname)).readlines()
+        issuetitle = ''.join(issuetitle)
+        issuetitle = issuetitle.strip()
+        if not issuetitle:
+            return False
+        else:
+            return issuetitle
+    except:
+        return False 
+
+
+def run_auto(date,severity,assignedto,updatedby,cluster,UserGroup):
+    try:
+        pbs_states_csv = os.popen("{0} -t30 -Nw {1} {2} -av -Fdsv -D,".format(clush_path, pbsadmin, pbsnodes_path)).readlines()
     except:
         print('Can not process --auto')
         details = "Can not get pbsnodes from %s" % (pbsadmin)
         cttissue = new_issue(date, '1', '---', 'open', \
                    cluster, 'FATAL', 'Can not get pbsnodes', \
                    details, 'FATAL', 'FATAL', \
-                   'FATAL', 'o', 'FATAL', date)
+                   'FATAL', 'o', 'FATAL', date, UserGroup)
         log_history(cttissue, date, 'ctt', 'new issue')
         exit(1)
 
@@ -130,9 +181,11 @@ def run_auto(date,severity,assignedto,updatedby,cluster):
                 cttissue = new_issue(date, '1', '---', 'open', \
                             cluster, 'FATAL', 'MAX OPEN REACHED', \
                             details, 'FATAL', 'FATAL', \
-                            'FATAL', 'o', 'FATAL', date)
+                            'FATAL', 'o', 'FATAL', date, UserGroup)
                 log_history(cttissue, date, updatedby, 'new issue')
-            exit(1) 
+            exit(1)
+
+
     for line in pbs_states_csv:
         splitline = line.split(",")
         node = splitline[0] 
@@ -154,17 +207,22 @@ def run_auto(date,severity,assignedto,updatedby,cluster):
                 update_issue(cttissue, 'state', state)  
                 update_issue(cttissue, 'updatedby', 'ctt')
                 update_issue(cttissue, 'updatedtime', date)
-                log_history(cttissue, date, 'ctt', 'state changed to %s' % (state))
+                log_history(cttissue, date, 'ctt', '%s state changed to %s' % (node,state))
 
-        elif state in ('state-unknown', 'offline', 'down'):	#if no issue on node     
-            for item in splitline:
-                if 'comment=' in item:
-                    x,comment = item.split('=')
-                    if comment == ' ':
-                        comment = 'Unknown Reason'
-                    if node_open_check(node) is False:	#Prevents duplicate issues on node 
-                        hostname = node
-                        newissuedict[hostname]=comment
+        elif state in ('state-unknown', 'offline', 'down'):	#if no issue on node
+            if 'comment=' in ''.join(splitline):
+                for item in splitline:
+                    if 'comment=' in item:
+                        x,comment = item.split('=')
+                        if comment and node_open_check(node) is False:	#Prevents duplicate issues on node 
+                            hostname = node
+                            newissuedict[hostname] = comment
+
+            else:
+                comment = 'Unknown Reason'
+                hostname = node
+                newissuedict[hostname] = comment
+
     if len(newissuedict) != 0 and len(newissuedict) <= int(maxissuesrun):
         status = 'open'
         ticket = '---'
@@ -174,13 +232,21 @@ def run_auto(date,severity,assignedto,updatedby,cluster):
         updatedtime = date
         updatedtime = updatedtime[:-10]
         assignedto = 'ctt'
-        state = 'unknown'	 
+        state = 'unknown' #initial state, next --auto will get actual state       
         for hostname,comment in newissuedict.items():
-            issuetitle = issuedescription = comment
+            issuetitle = get_THIS_IS_A_BAD_NODE(hostname)
+            if issuetitle is not False: 
+                issuedescription = issuetitle 
+                if comment:
+                    issuedescription = issuedescription + ', PBS comment=%s' % (comment) 
+            else:
+                issuetitle = issuedescription = comment  
+                                                                
             cttissue = new_issue(date,severity,ticket,status,cluster,hostname,issuetitle, \
-                                 issuedescription,assignedto,issueoriginator,updatedby,issuetype,state,updatedtime)                        
-            print("%s state is %s with comment: %s" %(hostname, state, comment))  #####
+                                 issuedescription,assignedto,issueoriginator,updatedby,issuetype,state,updatedtime,UserGroup)                        
+            #print("%s state is %s with comment: %s" %(hostname, state, comment))  #####
             log_history(cttissue, date, 'ctt', 'new issue')
+
     elif len(newissuedict) >= int(maxissuesrun):
         print('Maximum number of issues reached for --auto')                                                                  
         print('Can not process --auto')                                                                                                             
@@ -189,9 +255,69 @@ def run_auto(date,severity,assignedto,updatedby,cluster):
         cttissue = new_issue(date, '1', '---', 'open', \
                              cluster, 'FATAL', 'MAX RUN REACHED: %s/%s' % (len(newissuedict), maxissuesrun), \
                              details, 'FATAL', 'FATAL', \
-                             'FATAL', 'o', 'FATAL', date)                                                                                                    
+                             'FATAL', 'o', 'FATAL', date, UserGroup)                                                                                                    
         log_history(cttissue, date, 'ctt', 'new issue')                                                                                         
         exit(1)
+
+#Force Offline
+    for line in pbs_states_csv:
+        splitline = line.split(",")
+        node = splitline[0]
+        x,node = node.split('=')
+        state = splitline[5]
+        x,state = state.split('=')
+
+        if sibling_open_check(node) is True:
+            if not re.search('offline', splitline[5]) and not re.search('offline', splitline[6]):
+                sibcttissue = get_sibcttissue(node)
+                if sibcttissue:
+                    nodes2drain = node.split(',')
+                    pbs_drain(sibcttissue, date, 'ctt', nodes2drain)
+                    update_sibling(node, 'offline')
+                    log_history(sibcttissue, date, 'ctt', 'Auto forced pbs offline')
+
+        if primary_node_open_check(node) is True:
+            if not re.search('offline', splitline[5]) and not re.search('offline', splitline[6]):   #update node state if open issue on node and state changed
+                cttissue = get_cttissue(node)
+                if cttissue:
+                    nodes2drain = node.split(',')
+                    pbs_drain(cttissue, date, 'ctt', nodes2drain)
+                    update_issue(cttissue,'state', 'offline')
+                    log_history(cttissue, date, 'ctt', 'Auto forced pbs offline')
+
+def primary_node_open_check(node):      #checks if node has open issue
+    con = SQL.connect('ctt.sqlite')
+    with con:
+        cur = con.cursor()
+        cur.execute('''
+            SELECT rowid FROM issues WHERE hostname = ? and status = "open"''', (node,))
+        data1 = cur.fetchone()
+        if data1 is None:
+            return False
+        else:
+            return True
+
+
+def get_sibcttissue(node):	#get sibling cttissue number from node (if open)
+    con = SQL.connect('ctt.sqlite')
+    with con:
+        cur = con.cursor()
+        cur.execute('''SELECT cttissue FROM siblings WHERE sibling = ? and status = ?''', (node, 'open'))
+        cttissue = cur.fetchone()
+        if cttissue:
+            cttissue = ''.join(cttissue) #tuple to str
+            return cttissue
+
+
+def get_cttissue(node):		#get cttissue number from node name (if open)
+    con = SQL.connect('ctt.sqlite')
+    with con:
+        cur = con.cursor()
+        cur.execute('''SELECT cttissue FROM issues WHERE hostname = ? and status = ?''', (node, 'open'))
+        cttissue = cur.fetchone()
+        if cttissue:
+            cttissue = ''.join(cttissue) #tuple to str
+            return cttissue
 
 
 def test_arg_size(arg,what,maxchars):
@@ -221,17 +347,17 @@ def update_ticket(cttissue, ticketvalue):
             cur.execute('''UPDATE issues SET ticket = ? WHERE cttissue = ?''', (ticketlist, cttissue,))
 
 
-def view_tracker_new(cttissue,updatedby,viewnotices):        #used for new issues and updates
+def view_tracker_new(cttissue,UserGroup,viewnotices):        #used for new issues and updates
     userlist = []                               
     for user in viewnotices.split(' '):
-        if updatedby == user:
+        if UserGroup == user:
             next       
         else:
             userlist.append(user)       
     if userlist:
         userlist = '.'.join(userlist)
     else:
-        userlist = "----"
+        userlist = "---"
 
     con = SQL.connect('ctt.sqlite')
     with con:
@@ -239,7 +365,7 @@ def view_tracker_new(cttissue,updatedby,viewnotices):        #used for new issue
         cur.execute('''UPDATE issues SET viewtracker = ? WHERE cttissue = ?''', (userlist, cttissue))
 
 
-def view_tracker_update(cttissue,updatedby):	#used to update viewtracker column when a user runs --show
+def view_tracker_update(cttissue,UserGroup):	#used to update viewtracker column when a user runs --show
     con = SQL.connect('ctt.sqlite')
     with con:
         cur = con.cursor()
@@ -247,11 +373,11 @@ def view_tracker_update(cttissue,updatedby):	#used to update viewtracker column 
         for row in cur:
             userlist = (row[16])
             userlist = userlist.split('.')
-            if updatedby in userlist:
-                userlist.remove(updatedby)
+            if UserGroup in userlist:
+                userlist.remove(UserGroup)
             userlist = '.'.join(userlist)
             if not userlist:
-                userlist = '----'
+                userlist = '---'
             cur.execute('''UPDATE issues SET viewtracker = ? WHERE cttissue = ?''', (userlist, cttissue))
 
 
@@ -261,22 +387,7 @@ def get_pbs_sib_state(node):
         cur = con.cursor()
         cur.execute('''SELECT state FROM siblings WHERE sibling = ? and status = ?''', (node, 'open',))
         state = cur.fetchone()
-        #print(state)	#test
         return state        
-
-
-def set_pbs_offline(node, comment):  #### NOT USED YET
-    if comment:		#do we want to update/change comment???
-        return os.popen("%s -Nw %s %s -o -C %s %s" % (clush_path, pbsadmin, pbsnodes_path, comment, node))
-    else:
-        return run_task("%s -o %s" % (pbsnodes_path, node))   #FIX???
-
-
-def set_pbs_online(node, comment):	#### NOT USED YET    
-    if comment:		# we want to clear previous comment out
-        return os.popen("%s -Nw %s %s -r -C %s %s" % (clush_path, pbsadmin, pbsnodes_path, comment, node))
-    else:
-        return os.popen("%s -Nw %s %s -r %s" % (clush_path, pbsadmin, pbsnodes_path, node))
 
 
 def get_hostname(cttissue):
@@ -290,6 +401,9 @@ def get_hostname(cttissue):
 
 
 def add_siblings(cttissue,date,updatedby): #need to run a drain function (set_pbs_offline()) on the siblings when adding!!!
+    if issue_open_check(cttissue) is False:  #Added this check 2/2/2021, Jon
+        print("Issue %s is not open" % (cttissue))
+        exit()    
     node = get_hostname(cttissue)
     node = ''.join(node)	#tuple to str
     try:
@@ -297,6 +411,13 @@ def add_siblings(cttissue,date,updatedby): #need to run a drain function (set_pb
     except:
         print("Can not get siblings. Check node name.")
         exit(1)
+
+    nodes.remove(node)
+
+    if pbs_enforcement == "True":
+        pbs_drain(cttissue,date,updatedby,nodes)
+    else:
+        print("pbs_enforcement is False. Not draining nodes")
 
     for sib in nodes:
         if node != sib:
@@ -307,7 +428,7 @@ def add_siblings(cttissue,date,updatedby): #need to run a drain function (set_pb
                         cttissue,date,status,parent,sibling,state)
                         VALUES(?, ?, ?, ?, ?, ?)''',
                         (cttissue, date, 'open', node, sib, '---'))
-                print("Attached sibling %s to issue %s" % (sib,cttissue))
+                #print("Attached sibling %s to issue %s" % (sib,cttissue))  #jon1
 
         info = "Attached sibling %s to issue" % (sib)
         log_history(cttissue, date, updatedby, info)
@@ -326,8 +447,8 @@ def node_to_tuple(n):	#used by add_siblings()
 def resolve_siblings(node): 	#used by add_siblings()
     nodes_per_blade = 4
     slots_per_iru = 9
-#    if re.search("^la", socket.gethostname()) is None:               #FIX ME!!!
-#        nodes_per_blade = 2
+    if re.search("^la", socket.gethostname()) is not None:               #updated 2/3/2021, was commented out, jon
+        nodes_per_blade = 2                                          #updated 2/3/2021, was commented out, jon
     """ resolve out list of sibling nodes to given set of nodes """
     result = []
     nt = node_to_tuple(node)
@@ -354,17 +475,22 @@ def node_open_check(node):	#checks if node has open issue
     con = SQL.connect('ctt.sqlite')
     with con:
         cur = con.cursor()
-        cur.execute('''SELECT rowid FROM issues WHERE hostname = ? and status = "open"''', (node,))
-        data=cur.fetchone()
-        if data is None:
+        cur.execute('''
+            SELECT rowid FROM siblings WHERE sibling = ? and status = "open"''', (node,))
+        data1 = cur.fetchone()
+        cur.execute('''
+            SELECT rowid FROM issues WHERE hostname = ? and status = "open"''', (node,))
+        data2 = cur.fetchone()
+        if data1 is None and data2 is None:
             return False
         else:
-            return True    
+            return True
+
 
 
 def check_nolocal():                                                                                                                                                      
     if os.path.isfile('/etc/nolocal'):                                                                                                                                                
-        print("/etc/nolocal exists, exiting!")
+        print("/etc/nolocal exists, Exiting!")
         exit(1)
 
 
@@ -424,7 +550,7 @@ def get_issue_full(cttissue):	#used for the --show option
                 issuetype = (row[13])
                 state = (row[14])
                 updatedtime = (row[15][0:16])
-                print("ctt Issue: %s" % (cttissue))
+                print("CTT Issue: %s" % (cttissue))
                 print("External Ticket: %s" % (ticket))
                 print("Date Opened: %s" % (date))
                 print("Assigned To: %s" % (assignedto))
@@ -472,7 +598,7 @@ def get_comments(cttissue):	#used for --show option (displays the comments)
                 print(textwrap.fill(comment, width=60))
 
 
-def comment_issue(cttissue, date, updatedby, newcomment):
+def comment_issue(cttissue, date, updatedby, newcomment,UserGroup):
     if issue_deleted_check(cttissue) is False and issue_exists_check(cttissue) is True:
         con = SQL.connect('ctt.sqlite')
         with con:
@@ -481,12 +607,11 @@ def comment_issue(cttissue, date, updatedby, newcomment):
                     cttissue,date,updatedby, comment)
                     VALUES(?, ?, ?, ?)''',
                     (cttissue, date, updatedby, newcomment))
-            #print("Comment added to issue %s" % (cttissue))
     else: 
         print("Can't add comment to %s. Issue not found or deleted" % (cttissue))
         exit()
 
-    view_tracker_new(cttissue,updatedby,viewnotices)   
+    view_tracker_new(cttissue,UserGroup,viewnotices)   
     return
 
 
@@ -508,9 +633,9 @@ def update_issue(cttissue, updatewhat, updatedata):
         with con:
             cur = con.cursor()
             cur.execute('''UPDATE issues SET {0} = ? WHERE cttissue = ?'''.format(updatewhat), (updatedata, cttissue))    
-            print("ctt issue %s updated: %s" % (cttissue, updatewhat))
+            #print("Issue %s updated: %s" % (cttissue, updatewhat))  #jon test
     else:
-        print("ctt issue %s not found or deleted" % (cttissue))
+        print("Issue %s not found or deleted" % (cttissue))
     
 
 def check_has_sibs(cttissue):
@@ -555,8 +680,14 @@ def get_issues(statustype):	#used for the --list option
             state = (row[14])
             updatedtime = (row[15][0:16])
             viewtracker = (row[16])
-            print(fmt("%s" % cttissue, "%s" % date, "%s" % ticket, "%s" % hostname, "%s" % state, \
-                      "%s" % severity, "%s" % issuetype, "%s" % assignedto, "%s" % viewtracker, "%s" % issuetitle))
+            #print(bcolors.WARNING + "TEST" + bcolors.ENDC)
+            if severity  == 1:
+                print(bcolors.FAIL + fmt("%s" % cttissue, "%s" % date, "%s" % ticket, "%s" % hostname, "%s" % state, \
+                          "%s" % severity, "%s" % issuetype, "%s" % assignedto, "%s" % viewtracker, "%s" % issuetitle) + bcolors.ENDC)
+            else:
+                 print(fmt("%s" % cttissue, "%s" % date, "%s" % ticket, "%s" % hostname, "%s" % state, \
+                          "%s" % severity, "%s" % issuetype, "%s" % assignedto, "%s" % viewtracker, "%s" % issuetitle)) 
+
             if check_has_sibs(cttissue) is True:
                 sibs = resolve_siblings(hostname)
                 for node in sibs:
@@ -599,10 +730,16 @@ def get_issues_vv(statustype):   # -vv option
             updatedtime = (row[15][0:16]) 
             viewtracker = (row[16]) 
             cols = "{0:<8}{1:<19}{2:<9}{3:<13}{4:<16}{5:<6}{6:<7}{7:<8}{8:<12}{9:<12}{10:<8}{11:<10}{12:<19}{13:<10}{14:<20}{15:<%s}" % (len(issuetitle) + 10)  #get len(issuetiel) and insert plus a few?
-            fmt = cols.format                                                                                                               
-            print(fmt("%s" % cttissue, "%s" % date, "%s" % ticket, "%s" % hostname, "%s" % state, "%s" % severity, \
-                      "%s" % issuetype, "%s" % assignedto, "%s" % viewtracker, "%s" % cluster, "%s" % issueoriginator, "%s" % updatedby, \
-                      "%s" % updatedtime, "%s" % status, "%s" % issuetitle, "%s" % issuedescription))
+            fmt = cols.format
+            if severity == 1:
+                print(bcolors.FAIL + fmt("%s" % cttissue, "%s" % date, "%s" % ticket, "%s" % hostname, "%s" % state, "%s" % severity, \
+                          "%s" % issuetype, "%s" % assignedto, "%s" % viewtracker, "%s" % cluster, "%s" % issueoriginator, "%s" % updatedby, \
+                          "%s" % updatedtime, "%s" % status, "%s" % issuetitle, "%s" % issuedescription) + bcolors.ENDC)
+            else:
+               print(fmt("%s" % cttissue, "%s" % date, "%s" % ticket, "%s" % hostname, "%s" % state, "%s" % severity, \
+                         "%s" % issuetype, "%s" % assignedto, "%s" % viewtracker, "%s" % cluster, "%s" % issueoriginator, "%s" % updatedby, \
+                         "%s" % updatedtime, "%s" % status, "%s" % issuetitle, "%s" % issuedescription))
+ 
             if check_has_sibs(cttissue) is True:
                 sibs = resolve_siblings(hostname)
                 for node in sibs:
@@ -644,10 +781,15 @@ def get_issues_v(statustype):	# -v option
             state = (row[14])                                                                                                                                      
             updatedtime = (row[15][0:16]) 
             viewtracker = (row[16]) 
-     
-            print(fmt("%s" % cttissue, "%s" % date, "%s" % ticket, "%s" % hostname, "%s" % state, "%s" % severity, \
-                      "%s" % issuetype, "%s" % assignedto, "%s" % viewtracker, "%s" % cluster, "%s" % issueoriginator, "%s" % updatedby, \
-                      "%s" % updatedtime, "%s" % status, "%s" % issuetitle))
+            if severity == 1:     
+                print(bcolors.FAIL + fmt("%s" % cttissue, "%s" % date, "%s" % ticket, "%s" % hostname, "%s" % state, "%s" % severity, \
+                          "%s" % issuetype, "%s" % assignedto, "%s" % viewtracker, "%s" % cluster, "%s" % issueoriginator, "%s" % updatedby, \
+                          "%s" % updatedtime, "%s" % status, "%s" % issuetitle) + bcolors.ENDC)
+            else:
+                print(fmt("%s" % cttissue, "%s" % date, "%s" % ticket, "%s" % hostname, "%s" % state, "%s" % severity, \
+                          "%s" % issuetype, "%s" % assignedto, "%s" % viewtracker, "%s" % cluster, "%s" % issueoriginator, "%s" % updatedby, \
+                          "%s" % updatedtime, "%s" % status, "%s" % issuetitle))
+                
             if check_has_sibs(cttissue) is True:
                 sibs = resolve_siblings(hostname)
                 for node in sibs:
@@ -659,6 +801,18 @@ def get_issues_v(statustype):	# -v option
                         print(fmt("%s" % cttissue, "%s" % date, "%s" % ticket, "%s" % hostname, "%s" % state, "%s" % severity, \
                                    "%s" % issuetype, "%s" % assignedto, "%s" % viewtracker, "%s" % cluster, "%s" % issueoriginator, "%s" % updatedby, \
                                    "%s" % updatedtime, "%s" % status, "%s" % issuetitle))
+
+
+def issue_open_check(cttissue):
+    con = SQL.connect('ctt.sqlite')
+    with con:
+        cur = con.cursor()
+        cur.execute('''SELECT rowid FROM issues WHERE cttissue = ? and status = ?''', (cttissue, 'open'))
+        data = cur.fetchone()
+        if data is None:
+            return False
+        else:
+            return True
 
 
 def issue_closed_check(cttissue):	#TO DO LATER: CHANGE ALL THE issue_xxxx_check functions to get_issue_status(cttissue,STATUS) and return True||False
@@ -691,66 +845,88 @@ def delete_issue(cttissue): #check to make sure admin only runs this???    Add s
         with con:
             cur = con.cursor()
             cur.execute('''UPDATE issues SET status = ? WHERE cttissue = ?''', ('deleted', cttissue))
-            print("ctt issue %s deleted" % (cttissue))
+            #print("Issue %s deleted" % (cttissue)) #jon1
 
 
-def close_and_resume_issue(cttissue,date,updatedby,nodes2resume):
-    con = SQL.connect('ctt.sqlite')
-    with con:            
-        cur = con.cursor()
-        cur.execute('''UPDATE siblings SET status = ? WHERE cttissue = ?''', ('closed', cttissue))
-        #print("Detached siblings")	#for testing 
-        cur.execute('''UPDATE issues SET status = ? WHERE cttissue = ?''', ('closed', cttissue))
-        print("ctt issue %s closed" % (cttissue))
- 
-    log_history(cttissue,date,updatedby, 'Detached Siblings')
+def pbs_resume(cttissue,date,updatedby,nodes2resume):
+    for node in nodes2resume:
+        if node is 'FATAL':
+            next
+        else:
+            try:
+                os.popen("{0} -t30 -w {1} -qS -t30 -u120 '{2} -r -C \"\" {3}'".format(clush_path, pbsadmin, pbsnodes_path, node)).read()
+            except:
+                print('Can not process pbs_resume() on %s' % (node))
 
-    if 'noresume' in nodes2resume:
-        #print('Not resuming any nodes')	#test message
-        next
-    if 'noresume' not in nodes2resume:
-        for node in nodes2resume:
-            print('%s: Resume nodes function here' % (node))
+            try:
+                os.popen("{0} -t30 -w {1} '[ -f /etc/nolocal ] && /usr/bin/unlink /etc/nolocal ; [ -f /etc/THIS_IS_A_BAD_NODE.ncar ] && /usr/bin/unlink /etc/THIS_IS_A_BAD_NODE.ncar;' 2>/dev/null".format(clush_path, node))
+            except:
+                print('Can not unlink /etc/nolocal or /etc/THIS_IS_A_BAD_NODE.ncar on %s' % (node))
 
-    exit()
+            log_history(cttissue, date, updatedby, 'ctt resumed %s' % (node))
 
+
+def pbs_drain(cttissue,date,updatedby,nodes2drain):
+    for node in nodes2drain:
+        try:
+            os.popen("{0} -t30 -w {1} -qS -t30 -u120 '{2} -o {3}'".format(clush_path, pbsadmin, pbsnodes_path, node)).read()
+        except:
+            print('Can not process pbs_drain() on %s' % (node))
+
+        log_history(cttissue, date, updatedby, 'Drained %s' % (node))    
 
 def close_issue(cttissue, date, updatedby):
+    if issue_open_check(cttissue) is False: #added this check 2/2/2021, Jon
+        print("Issue %s is not open" % (cttissue))
+        exit()
     if issue_deleted_check(cttissue) is False and issue_exists_check(cttissue) is True and check_for_siblings(cttissue) is False:	#no siblings attached to cttissue
         node = get_hostname(cttissue)
         node = ''.join(node)
         nodes2resume = []
+        nodes2resumeA = []
+        nodes2resumeB = []
         con = SQL.connect('ctt.sqlite')
         with con:				#1. Another issue with same node?
             cur = con.cursor()
             cur.execute('''SELECT rowid FROM issues WHERE hostname = ? and status = ? and cttissue != ?''', (node, 'open', cttissue,))
             data = cur.fetchone()
             if data is None:
-                #print('continue to check if #2... - 1')
+                nodes2resumeA.append(node)   #No other issue with this node
                 next 
             else:
-                print('There is another issue for this node, closing cttissue, but not resuming in pbs - 1')
-                nodes2resume.append('noresume')				
-                close_and_resume_issue(cttissue,date,updatedby,nodes2resume)                
+                print('There is another issue for this node. Closing issue, but not resuming.')
+                cur.execute('''UPDATE siblings SET status = ? WHERE cttissue = ?''', ('closed', cttissue))
+                cur.execute('''UPDATE issues SET status = ? WHERE cttissue = ?''', ('closed', cttissue))
         
         with con:				#2. In siblings table as sibling for a different issue?
             cur = con.cursor()
             cur.execute('''SELECT rowid FROM siblings WHERE cttissue != ? and status = ? and sibling = ?''', (cttissue, 'open', node,))
             data = cur.fetchone()
             if data is None:
-                #print('ok to close cttissue and resume in pbs - 2')
-                nodes2resume.append(node)
-                close_and_resume_issue(cttissue,date,updatedby,nodes2resume)
+                nodes2resumeB.append(node)
+                cur.execute('''UPDATE siblings SET status = ? WHERE cttissue = ?''', ('closed', cttissue))                                   
+                cur.execute('''UPDATE issues SET status = ? WHERE cttissue = ?''', ('closed', cttissue))
+                #print("Issue %s closed" % (cttissue))                
             else:
-                print('This node is a sibling to another cttissue, closing cttissue, but not resuming in pbs - 2')
-                nodes2resume.append('noresume')
-                close_and_resume_issue(cttissue,date,updatedby,nodes2resume)
+                print('This node is a sibling to another issue. Closing issue, but not resuming.')
+                cur.execute('''UPDATE siblings SET status = ? WHERE cttissue = ?''', ('closed', cttissue))                                   
+                cur.execute('''UPDATE issues SET status = ? WHERE cttissue = ?''', ('closed', cttissue))
+                #print("Issue %s closed" % (cttissue))
+
+        #print("nodes2resumeA: %s" % (nodes2resumeA))
+        #print("nodes2resumeB: %s" % (nodes2resumeB))
+        nodes2resume = set(nodes2resumeA).intersection(nodes2resumeB)
+        #print("nodes2resumeA After: %s" % (nodes2resumeA))                                    
+        #print("nodes2resumeB After: %s" % (nodes2resumeB))
+        #print("nodes2resume: %s" % (list(nodes2resume)))
 
     if issue_deleted_check(cttissue) is False and issue_exists_check(cttissue) is True and check_for_siblings(cttissue) is True:	#3. Are siblings in siblings table for another cttissue. #this if statement checks if the cttissue has sibs attached.
         node = get_hostname(cttissue)
         node = ''.join(node)
         allnodes = resolve_siblings(node)
         nodes2resume = []
+        nodes2resumeA = []
+        nodes2resumeB = []
         con = SQL.connect('ctt.sqlite')
         for sibnode in allnodes:
             with con:			 
@@ -758,25 +934,39 @@ def close_issue(cttissue, date, updatedby):
                 cur.execute('''SELECT rowid FROM siblings WHERE sibling = ? and status = ? and cttissue != ?''', (sibnode, 'open', cttissue,))
                 data = cur.fetchone()
                 if data is None:
-                    #print('continue to check if #4... - 3')
-                    next
+                    nodes2resumeA.append(sibnode)
                 else:
-                    print('%s is a sibling for another cttissue. No nodes will be resumed, but cttissue will be closed. - 3' % (sibnode))
-                    nodes2resume.append('noresume')                    
-                    close_and_resume_issue(cttissue,date,updatedby,nodes2resume)
+                    print('%s is a sibling for another issue. No nodes will be resumed, but issue will be closed.' % (sibnode))
+                    cur.execute('''UPDATE siblings SET status = ? WHERE cttissue = ?''', ('closed', cttissue))                                   
+                    cur.execute('''UPDATE issues SET status = ? WHERE cttissue = ?''', ('closed', cttissue))
+                    #print("Issue %s closed." % (cttissue)) #jon1
 
-            with con:		#4. If has siblings attached, Do the siblings have a cttissue?
+            with con:		#4. If has siblings/allnodes  attached, Do the siblings have a cttissue?
                 cur = con.cursor()
                 cur.execute('''SELECT rowid FROM issues WHERE cttissue != ? and status = ? and hostname = ?''', (cttissue, 'open', sibnode,))
                 data = cur.fetchone()
                 if data is None:
-                    #print('node %s can be resumed - 4' % (sibnode))
-                    nodes2resume.append(sibnode) 
+                    nodes2resumeB.append(sibnode) 
                 else:
-                    print('Can not resume sibnode %s. sibnode has cttissue  - 4' % (sibnode))
-    
-    close_and_resume_issue(cttissue,date,updatedby,nodes2resume)
+                    print('Can not resume %s. Sibnode has another issue.' % (sibnode))
 
+    with con:
+        cur = con.cursor()
+        cur.execute('''UPDATE siblings SET status = ? WHERE cttissue = ?''', ('closed', cttissue))                                   
+        cur.execute('''UPDATE issues SET status = ? WHERE cttissue = ?''', ('closed', cttissue))
+        #print("Issue %s closed" % (cttissue))  #jon1
+
+    #print("A before: %s" % (nodes2resumeA))
+    #print("B before: %s" % (nodes2resumeB))
+    nodes2resume = set(nodes2resumeA).intersection(nodes2resumeB)
+    #print("A after: %s" % (nodes2resumeA))
+    #print("B after: %s" % (nodes2resumeB))
+    #print("nodes2resume: %s" % (list(nodes2resume)))
+
+    if pbs_enforcement == "True":
+        pbs_resume(cttissue,date,updatedby,nodes2resume)
+    else:
+        print("pbs_enforcement is False. Not resuming nodes")
 
 def check_for_siblings(cttissue):
     con = SQL.connect('ctt.sqlite')
@@ -789,15 +979,18 @@ def check_for_siblings(cttissue):
             return True     #has siblings
 
 
-def assign_issue(cttissue, assignto):	#assign to another person       
+def assign_issue(cttissue, assignto):	#DONT THINK THIS FUNCTION IS USED ANY LONGER #assign to another person 
+    if assignto not in (groupsList):
+        print("%s not a valid group, Exiting!" % (assignto))
+        exit(1)
     if issue_deleted_check(cttissue) is False and issue_exists_check(cttissue) is True:
         con = SQL.connect('ctt.sqlite')
         with con:
             cur = con.cursor()
             cur.execute('''UPDATE issues SET assignedto = ? WHERE cttissue = ?''', (assignto, cttissue))
-            print("ctt issue %s assigned to %s" % (cttissue, assignto))	
+            #print("Issue %s assigned to %s" % (cttissue, assignto))   #jon1 
     else:
-        print("ctt issue %s not found or deleted" % (cttissue))
+        print("Issue %s not found or deleted" % (cttissue))
 
 
 def get_new_cttissue():		#generates/gets the next cttissue number
@@ -810,9 +1003,9 @@ def get_new_cttissue():		#generates/gets the next cttissue number
 
 
 def new_issue(date,severity,ticket,status,cluster,hostname,issuetitle, \
-		issuedescription,assignedto,issueoriginator,updatedby,issuetype,state,updatedtime):
+		issuedescription,assignedto,issueoriginator,updatedby,issuetype,state,updatedtime,UserGroup):
     cttissue = get_new_cttissue()
-    print("ctt issue %s opened" % (cttissue))
+    print("Issue %s opened" % (cttissue))
     con = SQL.connect('ctt.sqlite')
     with con:
         cur = con.cursor()
@@ -825,7 +1018,14 @@ def new_issue(date,severity,ticket,status,cluster,hostname,issuetitle, \
                     issuetitle, issuedescription, assignedto, issueoriginator, 
                     updatedby, issuetype, state, updatedtime))
 
-    view_tracker_new(cttissue,updatedby,viewnotices)
+    view_tracker_new(cttissue,UserGroup,viewnotices)
+
+    if pbs_enforcement == "True":
+        nodes2drain = hostname.split(' ')
+        pbs_drain(cttissue,date,updatedby,nodes2drain)
+    else:
+        print("pbs_enforcement is False. Not draining nodes")
+
     return cttissue #for log_history
 
 
@@ -861,8 +1061,8 @@ def checkdb(date):		#checks the ctt db if tables and/or db itself exists. Create
 		    cluster,hostname,issuetitle,issuedescription,assignedto,
 		    issueoriginator,updatedby,issuetype,state,updatedtime,viewtracker)
 		    VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
-		    (cttissuestart, date, 99, "---", "----", "----", "----", 
-			"----", "Created table", "----", "----", "----", "----", "----", "----", "----"))
+		    (cttissuestart, date, 99, "---", "---", "---", "---", 
+			"---", "Created table", "---", "---", "---", "---", "---", "---", "---"))
  
     with con:
         cur = con.cursor()
@@ -901,94 +1101,117 @@ def show_help():
 
     print('''
 
-    --open
+--open
 
-		ctt.py --open ISSUETITLE ISSUEDESC [-c CLUSTER] -n NODE [-a ASSIGNTO]		# Default ASSIGNTO is ssg
+                ctt --open ISSUETITLE ISSUEDESC -n NODE
+                # You may open multiple issues with a comma separated list such as r1i1n1,r4i3n12,++
 
-		Examples:
-		ctt.py --open "Failed dimm on r1i1n1" "Description here" -c cheyenne -s 1 -n r1i1n1 -a casg
+                Examples:
+                ctt --open "Persistent memory errors" "Please open HPE ticket for persistent memory errors on P2-DIMM1G" -n r1i1n1
+                ctt --open "Will not boot" "Please open a severity 1 HPE ticket to determine why this node will not boot" -n r1i1n1 -a casg -s1
+                ctt --open "Persistent memory errors" "Persistent memory errors on P2-DIMM1G. HPE ticket already opened" -n r1i1n1 -t HPE48207411
 
+                Optional arguments:
+                -s, --severity, Choices: {1, 2, 3, 4}
+                -c, --cluster, 
+                -a, --assign, 
+                -t, --ticket, 
+                -x, --type, Choices: {h, s, t, u, o}    #Hardware, Software, Testing, Unknown, Other
 
-    --show
+--show
 
-		ctt.py --show ISSUENUMBER [-d]
+                ctt --show ISSUENUMBER
 		
-		Examples:
-		ctt.py --show 1045
+                Examples:
+                ctt --show 1045
+                ctt --show 1031 -d
 
-		Optional Arguments:
-		-d	    #Show detail/history of ticket
- 
-     
-    --list
+                Optional Arguments:
+                -d     #Show detail/history of ticket
 
-		ctt.py --list [-s {open,closed,deleted}]
+--list
 
-		Examples:
-		ctt.py --list               # Shows all open                                                                                                                                                             
-		ctt.py --list -s closed     # Options: open, closed, deleted, all 
+                ctt --list
 
- 
-    --update
+                Examples:
+                ctt --list
+                ctt --list -vv
+                ctt --list -s closed -v
 
-		ctt.py --update ISSUENUMBER [-s {1,2,3,4}]
-						[-c CLUSTER] [-n NODE] [-t TICKET]
-						[-a ASSIGNEDTO]
+                Optional Arguments:
+                -v
+                -vv
+                -s, Choices: {Open, Closed, All}
 
+--update
 
-		Optional Arguments:
-		-s {1,2,3,4}, --severity {1,2,3,4}                 # Update issue severity. Default is 3
-		-c CLUSTER, --cluster CLUSTER                      # Update clustername
-		-n NODE, --node NODE                               # Update node name
-		-t TICKET, --ticket TICKET                         # Update external ticket such as an ev number
-		-a ASSIGNEDTO, --assign ASSIGNEDTO                 # Assign issue to another group. Default is ssg
-		-i ISSUETITLE, --issuetitle ISSUETITLE             # Update/change the issue's title
-		-d ISSUEDESC, --issuedesc ISSUEDESC                # Update/change the issue's description 
-		-x {h!,h,s,t,u,o}, --type {h!,h,s,t,u,o}           # Issue Type {Hardware(with siblings), Hardware, Software, Test, Unknown, Other}
+                ctt --update ISSUENUMBER ARGUMENTS++
+                # You may update multiple issues with a comma separated list of ISSUENUMBERs such as 1031,1022,1009,++
 
-		Examples:
-		ctt.py --update 1039 -s 1 -c cheyenne -n r1i1n1 -t 689725 -a casg -i "This is a new title" -d "This is a new issue description"
+                Examples:
+                ctt --update 1039 -s 1 -c cheyenne -n r1i1n1 -t 689725 -a casg -i "This is a new title" -d "This is a new issue description"
+                ctt --update 1092 -s 1
 
 
-    --comment
+                Optional Arguments:
+                -s, --severity, Choices: {1,2,3,4}
+                -c, --cluster
+                -n, --node                                    #WARNING: Changing the node name will NOT drain a node nor resume the old node name
+                -t, --ticket
+                -a , --assign
+                -i , --issuetitle
+                -d , --issuedesc
+                -x, --type, Choices: {h!,h,s,t,u,o}           #Issue Type {Hardware(with siblings), Hardware, Software, Test, Unknown, Other}
 
-		ctt.py --comment ISSUENUMBER COMMENT
+--comment
+
+                ctt --comment ISSUENUMBER COMMENT
+                # You may comment multiple issues with a comma separated list of ISSUENUMBERs such as 1011,1002,1043,++
 		
-		Examples:
-		ctt.py --comment 12390 "Need an update"
+                Example:
+                ctt --comment 1008 "Need an update on this issue"
 
+--close
 
-    --close
+                ctt --close ISSUENUMBER COMMENT
+                # You may close multiple issues with a comma separated list such as 1011,1002,1043,++
 
-		ctt.py --close ISSUENUMBER COMMENT
+                Example:
+                ctt --close 1082 "Issue resolved after reseat"
 
-		Examples:
-		ctt.py --close 10282 "Issue resolved"	
+--reopen
 
+                ctt --reopen ISSUENUMBER COMMENT
+                # You may reopen multiple issues with a comma separated list such as 1011,1002,1043,++
 
-    --reopen
+                Examples:
+                ctt --reopen 1042 "Need to reopen this issue. Still seeing memory failures."
 
-		ctt.py --reopen ISSUENUMBER COMMENT
-
-		Examples:
-		ctt.py --reopen 10421 "Need to reopen this issue"
-
-    --attach
+--attach
 	
-		ctt.py --attach ISSUENUMBER FILE
+                ctt --attach ISSUENUMBER FILE  #absolute path
   
-		Examples:
-		ctt.py --rattach 1098 output.log
+                Examples:
+                ctt --attach 1098 /ssg/tmp/output.log
 
-    --delete
+--stats
 
-		ctt.py --delete ISSUENUMBER COMMENT
-
-		Examples:
-		ctt.py --delete 10101 "Duplicate issue"
+                ctt --stats
+                # The output will be in csv format.
 
     ''')
 
     exit()
+
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
 
 
