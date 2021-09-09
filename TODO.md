@@ -1,5 +1,6 @@
 # List of ideas, features, fixes, improvements...
 
+<<<<<<< HEAD
 * FIX:
 
 
@@ -21,4 +22,8 @@
   *WORKS: Does /etc/nolocal get unlinked when resumed.
   *WORKS: Test with real flag filename
 
+=======
+
+
+>>>>>>> ade080c1f9882671cf7dfb3495c35f8ff17bb605
 

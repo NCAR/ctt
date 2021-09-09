@@ -96,4 +96,7 @@
                 ctt --stats
                 # The output will be in csv format.
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> ade080c1f9882671cf7dfb3495c35f8ff17bb605
