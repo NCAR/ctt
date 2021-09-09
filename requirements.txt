@@ -1,8 +1,4 @@
 Requirements for Cluster Ticket Tracker:
 pbs pro
-db-sqlite3
+sqlite3
 ClusterShell
-
-Requirements for Bad Cable List:
-???
-
