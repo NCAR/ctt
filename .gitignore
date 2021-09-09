@@ -2,6 +2,7 @@ __pycache__
 ctt.sqlite
 backup/
 attachments/
+deprecated/
 notes
 ctt.sqlite.training
 .gitignore
