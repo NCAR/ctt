@@ -227,7 +227,7 @@ elif '--update' in sys.argv[1]:
                     log_history(cttissue,date,updatedby,'assigned issue to: %s' % (args.assignedtovalue))
             except IndexError:
                 parser.print_help()
-        else:
+        elif args.assignedtovalue != None:
             print("Assign to group \"%s\" is not a valid users group, Exiting!" % (args.assignedtovalue))
 
         if args.ticketvalue:
