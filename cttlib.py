@@ -47,6 +47,9 @@ clush_path = defaults['clush_path']
 maxissuesopen = defaults['maxissuesopen'] #ONLY USED WITH AUTO, CAN STILL MANUALLY OPEN ISSUES
 maxissuesrun = defaults['maxissuesrun']
 pbs_enforcement = defaults['pbs_enforcement'] #with False, will not resume or offline nodes in pbs
+strict_node_match = defaults['strict_node_match'] #False or comma del list of nodes
+strict_node_match_auto = defaults['strict_node_match_auto'] #False or comma del list of nodes
+
 
 #Get viewnotices list from ctt.ini
 userslist = []
@@ -77,13 +80,6 @@ def GetUserGroup(dict, user):
         exit()
     UserGroup = ''.join(userList)
     return UserGroup
-
-
-def strict_node_match_check(nodevalue,strict_node_match):
-    if nodevalue in strict_node_match:
-        return(True)
-    else:
-        return(False)
 
 
 def maxissueopen_issue():
@@ -194,6 +190,11 @@ def run_auto(date,severity,assignedto,updatedby,cluster,UserGroup):
         x,state = state.split('=')
         #known pbs states: 'free', 'job-busy', 'job-exclusive', 
         #'resv-exclusive', offline, down, provisioning, wait-provisioning, stale, state-unknown
+
+        if strict_node_match_auto is not False:
+            if not (node in strict_node_match_auto):
+                continue
+
 
         if sibling_open_check(node) is True:	#update sibling node state if open exists
             update_sibling(node, state)

@@ -61,7 +61,7 @@ issuetype = defaults['issuetype']
 assignedto = defaults['assignedto']
 attach_location = defaults['attach_location']
 cluster = defaults['cluster']
-strict_node_match = defaults['strict_node_match'] #Only used when --open from cmd line. 0 is off, comma delimeted list of nodes for on
+strict_node_match = defaults['strict_node_match'] #Only used when --open unless strict_node_match_auto is True. False is off, comma delimeted list of nodes for on
 pbs_enforcement = defaults['pbs_enforcement'] #with False, will not resume or offline nodes in pbs
 
 try: #??????
@@ -318,8 +318,9 @@ elif '--open' in sys.argv[1]:
     parser.add_argument('-x', '--type', action='store', dest='typevalue', choices=('h', 's', 't', 'u', 'o'), required=False)    
     args = parser.parse_args()
 
-    if strict_node_match is not '0':
-        if strict_node_match_check(args.nodevalue,strict_node_match) is False:
+
+    if strict_node_match is not False:
+        if not (args.nodevalue in strict_node_match):
             print("Can not find %s in strict_node_match, Exiting!" % (args.nodevalue))
             exit()
 
