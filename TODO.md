@@ -1,25 +1,9 @@
 # List of ideas, features, fixes, improvements...
 
-<<<<<<< HEAD
 * FIX:
 ###########
-
-  * Seems when adding ticket, needs to be one word. If more than one, wont remove ticketnumber
-    if len(line.split()) > 1:
-
-       if args.assignedtovalue in groupsList:
-            try:
-                if cttissue:
-                    update_issue(cttissue, 'assignedto', args.assignedtovalue)
-                    update_issue(cttissue, 'updatedby', updatedby)
-                    update_issue(cttissue, 'updatedtime', date)
-                    view_tracker_new(cttissue,UserGroup,viewnotices)
-                    log_history(cttissue,date,updatedby,'assigned issue to: %s' % (args.assignedtovalue))
-            except IndexError:
-                parser.print_help()
-        else:
-            print("Assign to group \"%s\" is not a valid users group, Exiting!" % (args.assignedtovalue))
-#########
+ipycodestyle
+###########
 
 
 
@@ -51,6 +35,4 @@
 
 =======
 
-
->>>>>>> ade080c1f9882671cf7dfb3495c35f8ff17bb605
 
