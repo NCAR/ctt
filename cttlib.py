@@ -40,6 +40,7 @@ EV = extraview.Client(config)
 
 # Get viewnotices list from ctt.ini
 userslist = []
+viewnotices = " ".join(userslist)
 usersdict = dict(config.items("USERS"))
 
 
@@ -286,11 +287,19 @@ def get_issue_data(cttissue):
     ]
 
 
-for key in usersdict:
-    userslist.append(key)
-    userslist = list(set(userslist))  # remove duplicates in list
-    viewnotices = " ".join(userslist)  # list to str
 
+def send_slack(slack_bot_token, slack_channel, slack_message):
+    from slack_sdk import WebClient
+    from slack_sdk.errors import SlackApiError
+
+    client = WebClient(token=slack_bot_token)
+
+    try:
+        client.chat_postMessage(channel=slack_channel, text=slack_message)
+
+    except SlackApiError as e:
+        assert e.response["error"]
+        print("Error sending message to Slack")
 
 # Get valid groups
 def GetGroups(dict, user):
@@ -935,9 +944,6 @@ def resolve_siblings(
         if nodename not in result:
             result.append(nodename)
     return result
-
-
-#### END SIB UPDATE FOR GUST/DE ####
 
 
 def check_node_state(

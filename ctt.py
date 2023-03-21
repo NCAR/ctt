@@ -341,7 +341,6 @@ def _comment(cttissue, args):
         ),
     )
     cttlib.log_touch(cttissue, 'Commented issue with "%s"' % (args.comment))
-
     if not args.noev:
         if cttlib.check_for_ticket(cttissue) is True:
             cttlib.comment_ev(cttissue, args.comment)
