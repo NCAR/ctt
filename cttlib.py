@@ -1,5 +1,6 @@
-#!/usr/bin/env python3
-
+import sqlite3 as SQL
+import textwrap
+from configparser import ConfigParser
 import os
 import re
 import socket
@@ -680,6 +681,20 @@ def transient_errors_check(node, date, updatedby):  # jon
 
                 log_history(cttissue, date, "ctt", "Closed issue %s" % (closemessage))
 
+def transient_errors_check(node, date, updatedby):   #jon
+    if primary_node_open_check(node) is True and transient_errors_enabled == "True":
+        cttissue = get_cttissue(node)
+        data = get_issue_data(cttissue)
+        data = list(map(str, data))    #data[7] == issuetitle
+        transient_errors_list = transient_errors.split(", ")
+        for item in transient_errors_list:
+            if item in data[7]:
+                close_issue(cttissue, date, updatedby)
+                closemessage = "Transient error: %s" % (item)
+                if slack_enabled == "True":
+                    slack_message = "Issue %s for %s: %s closed by ctt\n%s" % (cttissue, cluster, node, closemessage)
+                    send_slack(slack_bot_token, slack_channel, slack_message)
+                log_history(cttissue, date, 'ctt', 'Closed issue %s' % (closemessage))
 
 def primary_node_open_check(node):
     con = SQL.connect("ctt.sqlite")

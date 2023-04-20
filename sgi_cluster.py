@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # Filler module to get information about cluster
 # TODO: clean this up and make it load from somewhere intelligently
 import socket

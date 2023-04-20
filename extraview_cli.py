@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import extraview
 import os
 from nfile import read_file_first_line
