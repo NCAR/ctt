@@ -8,8 +8,6 @@ __pycache__
 attachments/
 backup/
 ctt.ini.*
-ctt.ini.dav
-ctt.ini.dev
 ctt.sqlite
 ctt.sqlite.*
 deprecated/
@@ -19,3 +17,4 @@ secrets.ini
 server
 user
 venv
+secrets.ini

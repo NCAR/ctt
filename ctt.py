@@ -27,13 +27,15 @@ def main():
 
     user = os.environ.get("SUDO_USER")
 
+    if user is None:
+        user = getpass.getuser()  # if not run via sudo
+
     if user == "root" and os.getenv("CRONTAB") != "True":
         print("You can't run ctt as root")
         sys.exit(1)
 
-    userGroup = _authorized_team(user, conf.get("users", "teams").split(" "))
-    if userGroup is None:
-        print("user is not authorized to run ctt")
+    if not _authorized_user(getpass.getuser(), conf.get("users", "teams").split(" ")):
+        print("Current user is not authorized to run ctt")
         sys.exit(1)
 
     parser = cli(conf)
@@ -46,16 +48,16 @@ def main():
         args.func(args, conf)
 
 
-def issues(parser):
+def _issues(parser):
     parser.add_argument("issue", type=int, nargs="+", help="ctt issue numbers")
 
 
-def issues_and_comment(parser):
+def _issues_and_comment(parser):
     issues(parser)
     parser.add_argument("comment")
 
 
-def ticket_args(parser, conf):
+def _ticket_args(parser, conf):
     parser.add_argument("-T", "--xticket", help="Toggle an external (HPE,IBM) ticket")
     parser.add_argument("-a", "--assign", choices=("ssg", "casg"))
     parser.add_argument("-c", "--cluster", default=conf.get("cluster", "name"))
@@ -71,7 +73,7 @@ def ticket_args(parser, conf):
     )
 
 
-def cli(conf):
+def _cli(conf):
     parser = argparse.ArgumentParser()
     ev_enabled = "True" != conf.getboolean("ev", "enabled")
     parser.add_argument(
@@ -328,27 +330,25 @@ def update(args):
             update_field(cttissue, "xticket", args.xticket)
 
 
-def _comment(cttissue, args):
-    conf = config.get_config()
+def _addcomment(cttissue, args):
     cttlib.test_arg_size(args.comment, what="comment", maxchars=500)
     cttlib.comment_issue(
         cttissue,
         datetime.datetime.now().isoformat(),
-        os.environ.get("SUDO_USER"),
+        updatedby,
         args.comment,
-        _authorized_team(
-            os.environ.get("SUDO_USER"), conf.get("users", "teams").split(" ")
-        ),
+        GetUserGroup(usersdict, user),
     )
-    cttlib.log_touch(cttissue, 'Commented issue with "%s"' % (args.comment))
+    log_touch(cttissue, 'Commented issue with "%s"' % (args.comment))
+
     if not args.noev:
         if cttlib.check_for_ticket(cttissue) is True:
             cttlib.comment_ev(cttissue, args.comment)
 
 
-def comment(args):
+def _comment(args):
     for cttissue in args.issue:
-        _comment(cttissue, args)
+        _addcomment(cttissue, args)
 
 
 def close(args, config):
@@ -475,7 +475,7 @@ def stats(args):
         cttlib.run_stats_node(args.node)
 
 
-def update_field(issue, field, to):
+def _update_field(issue, field, to):
     if field == "ticket":
         cttlib.update_ticket(issue, to)
     elif field == "xticket":
