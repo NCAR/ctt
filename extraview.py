@@ -1,6 +1,7 @@
-import requests
-import xml.etree.ElementTree
 import re
+import xml.etree.ElementTree
+
+import requests
 
 
 class Client:
@@ -24,8 +25,6 @@ class Client:
         _params.update(params)
 
         result = requests.get(self.url, params=_params)
-        # vlog(4, 'extraview http get: %s -> %s' % (result.url, result.status_code))
-        # vlog(5, 'extraview http get result:  %s' % (result.text))
         return result
 
     def http_get_xml(self, params):
@@ -36,7 +35,6 @@ class Client:
 
         r = self.http_get(params)
         return xml.etree.ElementTree.fromstring(r.text)
-        # xml.etree.ElementTree.dump(b)
 
     def split_results(self, result):
         """@brief Split extraview row column split result
@@ -79,7 +77,6 @@ class Client:
             params["parent_val"] = parentvalue
 
         values = self.split_results(self.http_get(params).text)
-        # vlog(7, 'get_field_allowed: %s' % (values))
 
         if parentfield is None:
             self.fields_cache[field] = values
@@ -101,11 +98,9 @@ class Client:
         @return ev key for given field for value or FALSE on error
         """
         fields = self.get_field_allowed(field, parentfield, parentvalue)
-        # vlog(6, 'find field %s parent %s: %s' % (field, parentfield, fields))
         for efield, evalue in fields.items():
             if evalue.lower() == value.lower():
                 return efield
-        # vlog(4, 'Unable to find field %s parent %s with value %s' % (field, parentfield, value))
         return None
 
     def get_group_id(self, group):
@@ -116,7 +111,6 @@ class Client:
         """Get Groups Members from an Extraview group"""
         id = self.get_group_id(group)
         if id is None:
-            # vlog(4, 'Unable to find group id for %s' % (group))
             return None
 
         return self.get_field_allowed("ASSIGNED_TO", "HELP_ASSIGN_GROUP", id)
@@ -126,7 +120,8 @@ class Client:
         * @param group Name of the group (note in EV all names are capped)
         * @param user name of user (can be NULL to unassign user)
         * @param EVSETUP extraview setup array
-        * @param allow_nonmember allow a non-member of group to be returned (EV group membership is not enforced)
+        * @param allow_nonmember allow a non-member of group to be returned
+            (EV group membership is not enforced)
         * @return user EV name or FALSE on error
         """
         id = self.get_group_id(group)
@@ -135,7 +130,6 @@ class Client:
 
         members = self.get_group_members(group)
         if members is None or user is None:
-            # vlog(4, 'Unable to find group members for %s' % (group))
             return None
 
         for member, name in members.iteritems():
@@ -145,7 +139,6 @@ class Client:
         if allow_nonmember:
             return user
         else:
-            # vlog(4, 'Unable to find group member %s for %s' % (user, group))
             return None
 
     def create(self, originator, group, user, title, description, fields={}):
@@ -162,7 +155,6 @@ class Client:
         """
         params = {
             "statevar": "insert",
-            #'p_template_file' => 'file.html',
             "username_display": "ID",
             "send_email": "no",
             "AREA": 1,  # cisl
@@ -175,9 +167,7 @@ class Client:
             "CONTACT_PHONE": "303-497-2400",
             "SUBMISSION_TYPE": 227,  # Web
             "SHORT_DESCR": title,
-            "DESCRIPTION": description
-            #'EMAIL_CUSTOMER' => 'user@example.com',
-            #'HELP_CUST_EMAIL_2' => 'user@example.com'
+            "DESCRIPTION": description,
         }
         params.update(fields)
 
@@ -197,7 +187,6 @@ class Client:
         if m:
             return m.group(1)
         else:
-            # vlog(2, 'Unable to create extraview ticket: %s' % (resp))
             return None
 
     def update(self, id, fields):
@@ -224,7 +213,6 @@ class Client:
         if user:
             user = self.get_group_member(group, user)
             if user is None:
-                # vlog(1, 'Unable to resolve {}/{} to user'.format(group, user))
                 return None
 
         if grpid is None:
@@ -248,7 +236,6 @@ class Client:
         """
         params = {
             "statevar": "search",
-            #'p_template_file' => 'file.html',
             "username_display": "ID",
             "record_start": "1",
             "record_count": "1",
@@ -263,7 +250,6 @@ class Client:
         params = {
             "STATUS": "TRANSFERRED",
             "HELP_CUSTOMER_COMMENTS": comment,
-            #'HELP_CLOSURE_CODE': self.get_field_value_to_field_key('HELP_CLOSURE_CODE', 'Successful')
         }
         params.update(fields)
 

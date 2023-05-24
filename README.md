@@ -1,4 +1,7 @@
 # CTT
 
 ## dev
-- before commiting run [black](https://github.com/psf/black) (code formater) on all python files
+- before commiting run 
+  - `black *.py`
+  - `isort *`
+  - `ruff check . --fix` and fix any errors

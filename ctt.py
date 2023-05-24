@@ -1,28 +1,41 @@
 #!/usr/bin/env python3
-import cttlib
-import datetime
 import argparse
-import sys
-import os
-import config
-import getpass
-from syslog import syslog
+import datetime
+import grp
 import ntpath
+import os
+import sys
+from syslog import syslog
+
+import config
+import cttlib
+import slack
+
+
+def _authorized_team(user, authorized_teams):
+    for team in authorized_teams:
+        t = grp.getgrnam(team)
+        if user in t[3]:
+            return t[0]
+    return None
 
 
 def main():
+    conf = config.get_config()
     logme = " ".join(sys.argv)
     syslog(logme)
 
     user = os.environ.get("SUDO_USER")
-    if user is None:
-        user = getpass.getuser()  # if not run via sudo
 
     if user == "root" and os.getenv("CRONTAB") != "True":
         print("You can't run ctt as root")
-        exit(1)
+        sys.exit(1)
 
-    conf = config.get_config()
+    userGroup = _authorized_team(user, conf.get("users", "teams").split(" "))
+    if userGroup is None:
+        print("user is not authorized to run ctt")
+        sys.exit(1)
+
     parser = cli(conf)
     args = parser.parse_args()
 
@@ -43,9 +56,7 @@ def issues_and_comment(parser):
 
 
 def ticket_args(parser, conf):
-    parser.add_argument(
-        "-T", "--xticket", help="Toggle an external (HPE,IBM) ticket"
-    )
+    parser.add_argument("-T", "--xticket", help="Toggle an external (HPE,IBM) ticket")
     parser.add_argument("-a", "--assign", choices=("ssg", "casg"))
     parser.add_argument("-c", "--cluster", default=conf.get("cluster", "name"))
     parser.add_argument("-s", "--severity", choices=("1", "2", "3", "4"))
@@ -171,16 +182,13 @@ def evclose(args):
     ev_comment = args.comment
     for cttissue in args.issue:
         if not args.noev:
-            if check_for_ticket(cttissue) is True:
-                ev_id = get_issue_data(cttissue)[3]  # ev_id
-                close_EV(cttissue, ev_comment)
+            if cttlib.check_for_ticket(cttissue) is True:
+                ev_id = cttlib.get_issue_data(cttissue)[3]  # ev_id
+                cttlib.close_ev(cttissue, ev_comment)
                 update_field(cttissue, "ticket", ev_id)
             else:
-                print(
-                    "There is no EV ticket attached to %s, Exiting!"
-                    % (cttissue)
-                )
-                exit(1)
+                print("There is no EV ticket attached to %s, Exiting!" % (cttissue))
+                sys.exit(1)
         else:
             print("extraview_enabled is False. Can't close EV")
 
@@ -188,71 +196,76 @@ def evclose(args):
 def evopen(args, config):
     for cttissue in args.issue:
         if not args.noev:
-            if check_for_ticket(cttissue) is False:
-                ev_id = open_EV(cttissue)
+            if cttlib.check_for_ticket(cttissue) is False:
+                ev_id = cttlib.open_ev(cttissue)
                 update_field(cttissue, "ticket", ev_id)
-                assignto = get_issue_data(cttissue)[9]
-                assign_EV(cttissue, assignto)
+                assignto = cttlib.get_issue_data(cttissue)[9]
+                cttlib.assign_ev(cttissue, assignto)
                 print("EV %s opened for CTT issue %s" % (ev_id, cttissue))
-                update_field(
-                    cttissue, "assignedto", config["ev"]["assignedto"]
-                )
+                update_field(cttissue, "assignedto", config["ev"]["assignedto"])
             else:
                 print("There is already an EV ticket attached to this issue.")
         else:
             print("extraview_enabled is False. Can't open EV")
 
 
-def attach(args, config):
+def attach(args, conf):
     for issue in args.issue:
-        create_attachment(
+        cttlib.create_attachment(
             issue,
             args.filepath,
-            config["DEFAULTS"]["attach_location"],
+            conf["DEFAULTS"]["attach_location"],
             datetime.datetime.now().isoformat(),
-            updatedby,
+            os.environ.get("SUDO_USER"),
         )
         filename = ntpath.basename(args.filepath)
-        log_touch(
+        cttlib.log_touch(
             issue,
             "Attached file: %s/%s/%s.%s"
             % (
-                config["DEFAULTS"]["attach_location"],
+                conf["DEFAULTS"]["attach_location"],
                 issue,
                 datetime.datetime.now().isoformat()[0:16],
                 filename,
             ),
         )
-        comment_issue(
+        cttlib.comment_issue(
             issue,
             datetime.datetime.now().isoformat(),
-            updatedby,
+            os.environ.get("SUDO_USER"),
             "Attached file: %s/%s/%s.%s"
             % (
-                config["DEFAULTS"]["attach_location"],
+                conf["DEFAULTS"]["attach_location"],
                 issue,
                 datetime.datetime.now().isoformat()[0:16],
                 filename,
             ),
-            GetUserGroup(usersdict, user),
+            _authorized_team(
+                os.environ.get("SUDO_USER"), conf.get("users", "teams").split(" ")
+            ),
         )
 
 
 def listcmd(args):
     if args.verbose == 1:
-        get_issues_v(args.status)
+        cttlib.get_issues_v(args.status)
     if args.vverbosevalue > 1:
-        get_issues_vv(args.status)
+        cttlib.get_issues_vv(args.status)
     else:
-        get_issues(args.status)
+        cttlib.get_issues(args.status)
 
 
-def show(args):
+def show(args, conf):
     for issue in args.issue:
-        get_issue_full(args.issue)
+        cttlib.get_issue_full(args.issue)
         if args.d is True:
-            get_history(args.issue)
-        view_tracker_update(args.issue, GetUserGroup(usersdict, user))
+            cttlib.get_history(args.issue)
+        cttlib.view_tracker_update(
+            args.issue,
+            _authorized_team(
+                os.environ.get("SUDO_USER"), conf.get("users", "teams").split(" ")
+            ),
+        )
 
 
 def update(args):
@@ -260,24 +273,26 @@ def update(args):
         if args.type:
             update_field(cttissue, "issuetype", args.type)
             if args.type == "h!":  # add ev function here for h!
-                add_siblings(
-                    cttissue, datetime.datetime.now().isoformat(), updatedby
+                cttlib.add_siblings(
+                    cttissue,
+                    datetime.datetime.now().isoformat(),
+                    os.environ.get("SUDO_USER"),
                 )
             if (
                 "h" in args.type and not args.noev
             ):  # move this statement up under if for h!
-                if check_for_ticket(cttissue) is False:
-                    ev_id = open_EV(cttissue)
+                if cttlib.check_for_ticket(cttissue) is False:
+                    ev_id = cttlib.open_ev(cttissue)
                     update_field(cttissue, "ticket", ev_id)
                     if "assign" not in vars(args):
-                        args.assign = get_issue_data(cttissue)[9]
+                        args.assign = cttlib.get_issue_data(cttissue)[9]
 
         if args.title:
-            test_arg_size(args.title, what="issue title", maxchars=100)
+            cttlib.test_arg_size(args.title, what="issue title", maxchars=100)
             update_field(cttissue, "issuetitle", args.title)
 
         if args.description:
-            test_arg_size(
+            cttlib.test_arg_size(
                 args.description, what="issue description", maxchars=4000
             )
             update_field(cttissue, "issuedescription", args.description)
@@ -295,12 +310,12 @@ def update(args):
             update_field(cttissue, "assignedto", args.assign)
 
             if not args.noev:
-                if check_for_ticket(cttissue) is True:
-                    assign_EV(cttissue, args.assign)
-                    log_history(
+                if cttlib.check_for_ticket(cttissue) is True:
+                    cttlib.assign_ev(cttissue, args.assign)
+                    cttlib.log_history(
                         cttissue,
                         datetime.datetime.now().isoformat(),
-                        updatedby,
+                        os.environ.get("SUDO_USER"),
                         "Assigned EV ticket to %s" % (args.assign),
                     )
             else:
@@ -314,19 +329,22 @@ def update(args):
 
 
 def _comment(cttissue, args):
-    test_arg_size(args.comment, what="comment", maxchars=500)
-    comment_issue(
+    conf = config.get_config()
+    cttlib.test_arg_size(args.comment, what="comment", maxchars=500)
+    cttlib.comment_issue(
         cttissue,
         datetime.datetime.now().isoformat(),
-        updatedby,
+        os.environ.get("SUDO_USER"),
         args.comment,
-        GetUserGroup(usersdict, user),
+        _authorized_team(
+            os.environ.get("SUDO_USER"), conf.get("users", "teams").split(" ")
+        ),
     )
-    log_touch(cttissue, 'Commented issue with "%s"' % (args.comment))
+    cttlib.log_touch(cttissue, 'Commented issue with "%s"' % (args.comment))
 
     if not args.noev:
-        if check_for_ticket(cttissue) is True:
-            comment_EV(cttissue, args.comment)
+        if cttlib.check_for_ticket(cttissue) is True:
+            cttlib.comment_ev(cttissue, args.comment)
 
 
 def comment(args):
@@ -337,12 +355,12 @@ def comment(args):
 def close(args, config):
     for cttissue in args.issue:
         _comment(cttissue, args)
-        node = get_hostname(cttissue)
+        node = cttlib.get_hostname(cttissue)
         if node is None:
             print("Issue %s is not open" % (cttissue))
             continue
         node = "".join(node)
-        if check_holdback(node) is not False:
+        if cttlib.check_holdback(node) is not False:
             answer = input(
                 "\n%s is in holdback state. Are you sure you want to release this node and close issue? [y|n]: "
                 % (node)
@@ -351,15 +369,18 @@ def close(args, config):
             if answer == "n":
                 continue
             elif answer == "y":
-                update_holdback(node, "remove")
+                cttlib.update_holdback(node, "remove")
                 next
             else:
-                exit(1)
+                sys.exit(1)
 
-        close_issue(
-            cttissue, datetime.datetime.now().isoformat(), updatedby, config
+        cttlib.close_issue(
+            cttissue,
+            datetime.datetime.now().isoformat(),
+            os.environ.get("SUDO_USER"),
+            config,
         )
-        log_touch(cttissue, "Closed issue %s" % (args.comment))
+        cttlib.log_touch(cttissue, "Closed issue %s" % (args.comment))
 
         evclose(args)
 
@@ -368,56 +389,56 @@ def close(args, config):
                 cttissue,
                 config["cluster"]["name"],
                 node,
-                updatedby,
+                os.environ.get("SUDO_USER"),
                 args.comment,
             )
-            slack = Slack(config)
-            slack.send_slack(slack_message)
+            sclient = slack.Slack(config)
+            sclient.send_slack(slack_message)
 
 
-def reopen(args, config):
+def reopen(args, conf):
     for cttissue in args.issue:
-        test_arg_size(args.comment, what="comment", maxchars=500)
-        comment_issue(
+        cttlib.test_arg_size(args.comment, what="comment", maxchars=500)
+        cttlib.comment_issue(
             cttissue,
             datetime.datetime.now().isoformat(),
-            updatedby,
+            os.environ.get("SUDO_USER"),
             args.comment,
-            GetUserGroup(usersdict, user),
+            _authorized_team(
+                os.environ.get("SUDO_USER"), conf.get("users", "teams").split(" ")
+            ),
         )
         update_field(cttissue, "status", "open")
-        if config["pbs"]["enforcement"] == "False":
+        if conf["pbs"]["enforcement"] == "False":
             print("pbs_enforcement is False. Not draining nodes")
         else:
-            pbs_drain(
+            cttlib.pbs_drain(
                 cttissue,
                 datetime.datetime.now().isoformat(),
-                updatedby,
-                get_hostname(cttissue),
+                os.environ.get("SUDO_USER"),
+                cttlib.get_hostname(cttissue),
             )
 
         if not args.noev:
-            if check_for_ticket(cttissue) is True:
-                reopen_EV(cttissue, args.comment)
-                assignto = get_issue_data(cttissue)[9]
-                assign_EV(cttissue, assignto)
+            if cttlib.check_for_ticket(cttissue) is True:
+                cttlib.reopen_ev(cttissue, args.comment)
+                assignto = cttlib.get_issue_data(cttissue)[9]
+                cttlib.assign_ev(cttissue, assignto)
         else:
             print("extraview_enabled is False. Can't close EV")
 
 
-def opencmd(args, config):
-    if config["DEFAULTS"]["strict_node_match"] == "False":
+def opencmd(args, conf):
+    if conf["DEFAULTS"]["strict_node_match"] == "False":
         return
-    if args.node not in config["DEFAULTS"]["strict_node_match"]:
+    if args.node not in conf["DEFAULTS"]["strict_node_match"]:
         print("Can not find %s in strict_node_match, Exiting!" % (args.node))
-        exit(1)
+        sys.exit(1)
 
     for node in args.node:
-        test_arg_size(args.title, what="issue title", maxchars=100)
-        test_arg_size(
-            args.description, what="issue description", maxchars=4000
-        )
-        cttissue = new_issue(
+        cttlib.test_arg_size(args.title, what="issue title", maxchars=100)
+        cttlib.test_arg_size(args.description, what="issue description", maxchars=4000)
+        cttissue = cttlib.new_issue(
             datetime.datetime.now().isoformat(),
             args.severity,
             args.ticket,
@@ -426,19 +447,21 @@ def opencmd(args, config):
             node,
             args.title,
             args.description,
-            config["DEFAULTS"]["assignedto"],
-            updatedby,
-            updatedby,
-            config["DEFAULTS"]["issuetype"],
+            conf["DEFAULTS"]["assignedto"],
+            os.environ.get("SUDO_USER"),
+            os.environ.get("SUDO_USER"),
+            conf["DEFAULTS"]["issuetype"],
             "unknown",
             datetime.datetime.now().isoformat(),
-            GetUserGroup(usersdict, user),
+            _authorized_team(
+                os.environ.get("SUDO_USER"), conf.get("users", "teams").split(" ")
+            ),
             args.xticket,
         )
         cttlib.log_history(
             cttissue,
             datetime.datetime.now().isoformat(),
-            updatedby,
+            os.environ.get("SUDO_USER"),
             "new issue",
         )
 
