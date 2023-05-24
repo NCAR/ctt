@@ -1,24 +1,16 @@
-#!/usr/bin/python
 import argparse
 import requests
 import xml.etree.ElementTree
 import re
-#from nlog import vlog,die_now
 
-class client:
-    """ Extraview Client """
-
-    user = None
-    password = None
-    url = None
-    fields_cache = {}
-    """ Cache of Extraview fields """
-
-
-    def __init__(self, user, password, url):
-        self.user = user
-        self.password = password
-        self.url = url
+class Client:
+    def __init__(self,config):
+        self.enabled = config.getboolean('ev', 'enabled')
+        if self.enabled:
+            self.user = config.get('ev', 'user')
+            self.password = config.get('ev', 'password')
+            self.url = config.get('ev', 'url')
+            self.fields_cache = {}
 
     def http_get(self, params):
         """ Perform a get request against extraview
@@ -159,31 +151,6 @@ class client:
             #vlog(4, 'Unable to find group member %s for %s' % (user, group))
             return None
 
-    def get_transferred_group(self, ticket):
-        params = {
-                  'statevar': 'get_fields',
-                  'id': ticket,
-                  'HELP_ASSIGN_GROUP': '1',
-        }
-        return self.http_get(params).text
- 
-    def get_assigned_to(self, ticket):
-        params = {
-            'statevar': 'get_fields',
-            'id': ticket,
-            'assigned_to': '1',
-            }
-        return self.http_get(params).text
-
-    def get_ticket_status(self, ticket):
-        params = {
-           'statevar': 'get_fields',
-           'id': ticket,
-           'status': '1',
-           }
-        return self.http_get(params).text
-
-
     def create(self, originator, group, user, title, description, fields = {}):
         """ @brief Create new Extraview Issue (aka ticket)
             @param group Name of the group (note in EV all names are capped) or NULL
@@ -301,10 +268,6 @@ class client:
 
         return self.http_get_xml(params)
 
-    def get_priority(self, priority):
-        """ Get EV priority field value from string priority"""
-        return self.get_field_value_to_field_key('PRIORITY', priority)
-
     def open(self, id, comment, fields = {}):       #Jon: doesnt work
         """ Close extraview ticket """
         params = {
@@ -331,15 +294,6 @@ class client:
         """ add resolver (admin only) comment extraview ticket """
         params = {
                   'COMMENTS':	comment,
-        }
-        params.update(fields)
-
-        return self.update(id, params)
-
-    def add_user_comment(self, id, comment, fields = {}):
-        """ add comment to user in extraview ticket """
-        params = {
-                  'HELP_CUSTOMER_COMMENTS':	comment,
         }
         params.update(fields)
 

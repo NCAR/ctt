@@ -1,581 +1,329 @@
-#!/usr/bin/python3
-# vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4
-#Copyright (c) 2020, University Corporation for Atmospheric Research
-#All rights reserved.
-#
-#Redistribution and use in source and binary forms, with or without 
-#modification, are permitted provided that the following conditions are met:
-#
-#1. Redistributions of source code must retain the above copyright notice, 
-#this list of conditions and the following disclaimer.
-#
-#2. Redistributions in binary form must reproduce the above copyright notice,
-#this list of conditions and the following disclaimer in the documentation
-#and/or other materials provided with the distribution.
-#
-#3. Neither the name of the copyright holder nor the names of its contributors
-#may be used to endorse or promote products derived from this software without
-#specific prior written permission.
-#
-#THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" 
-#AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-#IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
-#ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-#LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
-#CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
-#SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
-#INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
-#WHETHER IN CONTRACT, STRICT LIABILITY,
-#OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-#OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
-import sqlite3 as SQL
-from cttlib import *
+#!/usr/bin/env python3
+import cttlib
 import datetime
 import argparse
 import sys
-from configparser import ConfigParser
 import os
+import config
 import getpass
 from syslog import syslog
+import ntpath
 
+def main():
+    logme = ' '.join(sys.argv)
+    syslog(logme)
+    
+    user = os.environ.get("SUDO_USER")
+    if user is None:
+        user = getpass.getuser()	#if not run via sudo
+    
+    if user == 'root' and os.getenv('CRONTAB') != 'True':
+        print('You can\'t run ctt as root')
+        exit(1)
+    
+    updatedby = user
 
-logme = ' '.join(sys.argv)
-syslog(logme)
-
-con = SQL.connect('ctt.sqlite')
-date = datetime.datetime.now().isoformat() #ISO8601
-user = os.environ.get("SUDO_USER")
-if user is None:
-    user = getpass.getuser()	#if not run via sudo
-
-#if user == 'root' and os.getenv('CRONTAB') != 'True':
-#    print('You can\'t run ctt as root')
-#    exit()
-
-updatedby = user
-UserGroup = GetUserGroup(usersdict, user)
-groupsList = GetGroups(usersdict, user)
-checkdb(date)
-config = ConfigParser()
-config.read('ctt.ini')
-defaults = config['DEFAULTS']
-severity = defaults['severity']
-issuestatus = defaults['issuestatus']
-issuetype = defaults['issuetype']
-assignedto = defaults['assignedto']
-attach_location = defaults['attach_location']
-cluster = defaults['cluster']
-strict_node_match = defaults['strict_node_match'] #Only used when --open unless strict_node_match_auto is True. False is off, comma delimeted list of nodes for on
-pbs_enforcement = defaults['pbs_enforcement'] #with False, will not resume or offline nodes in pbs
-extraview_enabled = defaults['extraview_enabled'] #Enable extraview open, close, etc. True or False
-slack_enabled = defaults['slack_enabled']
-slack_bot_token = defaults['slack_bot_token']
-slack_channel = defaults['slack_channel']
-transient_errors = defaults['transient_errors']
-transient_errors_enabled = defaults['transient_errors_enabled']
-
-try: #??????
-    if not sys.argv[1]:
-        show_help()
-except IndexError:  #??????                                                                                                                                                                                         
-    show_help()
-
-
-if '--release' in sys.argv[1]:
-    #./ctt.py --release 1294 -n r1i1n1   #release list of siblings from parent node
-    parser = argparse.ArgumentParser(add_help=False, description="Cluster Ticket Tracker Version 2.1.0")
-    parser.add_argument('--release', action='store', dest='issuenumber', nargs=1, required=True)    
-    parser.add_argument('-n','--node', action='store', dest='nodevalue', required=True)
-    parser.add_argument('-c','--comment', action='store', dest='commentvalue', required=True)
+    conf = config.get_config()
+    parser = cli(conf)
     args = parser.parse_args()
-    node_list = args.nodevalue.split(',')
-    cttissue = args.issuenumber[0]
-    comment = args.commentvalue
 
-    for node in node_list:
-        release(cttissue, date, node)         
-        update_issue(cttissue, 'updatedby', updatedby)
-        update_issue(cttissue, 'updatedtime', date)
-        #comment issue here... or in release() 
-        log_history(cttissue, date, updatedby, 'Released sibling node %s' % (node))
+    # when no subcommand given func isn't set
+    if 'func' not in vars(args):
+        parser.print_help()
+    else:
+        args.func(args, conf)
 
 
-    exit()
+def issues(parser):
+    parser.add_argument('issue', type=int, nargs='+', help="ctt issue numbers")
 
-#####################
+def issues_and_comment(parser):
+    issues(parser)
+    parser.add_argument('comment')
 
-if '--holdback' in sys.argv[1]:
-    #./ctt.py --holdback casper30 add||remove
-    parser = argparse.ArgumentParser(add_help=False, description="Cluster Ticket Tracker Version 2.1.0")
-    parser.add_argument('--holdback', action='store', dest='holdbackvalue', nargs=2, required=True)
-    args = parser.parse_args()
-    node = args.holdbackvalue[0]
-    state = args.holdbackvalue[1]
-    update_holdback(node, state)
-    exit(0)
+def ticket_args(parser, conf):
+    parser.add_argument('-T','--xticket', help="Toggle an external (HPE,IBM) ticket")
+    parser.add_argument('-a','--assign', choices=('ssg', 'casg'))
+    parser.add_argument('-c','--cluster', default=conf.get('cluster', 'name'))
+    parser.add_argument('-s','--severity', choices=('1','2','3','4'))
+    parser.add_argument('-t','--ticket', help="Attach an existing EV ticket to this issue")
+    parser.add_argument('-x', '--type', choices=('h','h!', 's', 't', 'u', 'o'), help="Hardware, Software, Test, Unknown, Other")
 
+def cli(conf):
+    parser = argparse.ArgumentParser()
+    ev_enabled = "True" != conf.getboolean('ev', 'enabled')
+    parser.add_argument('--noev', action='store_true', help="Do not update EV ticket", default=(ev_enabled))
+    subparsers = parser.add_subparsers()
+    #TODO improve reuse of subparser args since so many subcommands have similar arguments
 
-if '--evclose' in sys.argv[1]:
-    #./ctt.py --evclose 12345
-    parser = argparse.ArgumentParser(add_help=False, description="Cluster Ticket Tracker Version 2.1.0")
-    parser.add_argument('--evclose', action='store', dest='evclosevalue', nargs=2, required=True)
-    args = parser.parse_args()
-    ev_comment = args.evclosevalue[1]
-    if args.evclosevalue[0]:
-        cttissue = args.evclosevalue[0]
-        if extraview_enabled == "True":
+    parser_release = subparsers.add_parser('release')
+    parser_release.add_argument('issue', type=int, help="ctt issue number")
+    parser_release.add_argument('node', nargs='+')
+    parser_release.set_defaults(func=release)
+
+    parser_holdback = subparsers.add_parser('holdback')
+    parser_holdback.add_argument('node')
+    parser_holdback.add_argument('state', choices=('add', 'remove'))
+    parser_holdback.set_defaults(func=holdback)
+
+    parser_evopen = subparsers.add_parser('evopen')
+    issues(parser_evopen)
+    parser_evopen.set_defaults(func=evopen)
+
+    parser_attach = subparsers.add_parser('attach')
+    issues(parser_attach)
+    parser_attach.add_argument('filepath')
+    parser_attach.set_defaults(func=attach)
+
+    parser_show = subparsers.add_parser('show')
+    issues(parser_show)
+    parser_show.add_argument('-d', action='store_true', help="Show detail/history of ticket")
+    parser_show.set_defaults(func=show)
+
+    parser_stats = subparsers.add_parser('stats')
+    parser_stats.add_argument('-n','--node')
+    parser_stats.add_argument('-c','--counts', action='store_true')
+    parser_stats.set_defaults(func=stats)
+
+    parser_listcmd = subparsers.add_parser('list')
+    parser_listcmd.add_argument('-s', '--status', choices=('open', 'closed', 'deleted', 'all'), default='open')
+    parser_listcmd.add_argument('--verbose', '-v', action='count', default=0)
+    parser_listcmd.set_defaults(func=listcmd)
+
+    parser_evclose = subparsers.add_parser('evclose')
+    issues_and_comment(parser_evclose)
+    parser_evclose.set_defaults(func=evclose)
+
+    parser_comment = subparsers.add_parser('comment')
+    issues_and_comment(parser_comment)
+    parser_comment.set_defaults(func=comment)
+
+    parser_close = subparsers.add_parser('close')
+    issues_and_comment(parser_close)
+    parser_close.set_defaults(func=close)
+
+    parser_reopen = subparsers.add_parser('reopen')
+    issues_and_comment(parser_reopen)
+    parser_reopen.set_defaults(func=reopen)
+
+    parser_update = subparsers.add_parser('update')
+    issues(parser_update)
+    ticket_args(parser_update, conf)
+    parser_update.add_argument('-d','--description')
+    parser_update.add_argument('-i','--issuetitle', dest='title')
+    parser_update.add_argument('-n','--node', nargs='+', help="Warning: Changing the node name will NOT drain a node nor resume the old node name")
+    parser_update.set_defaults(func=update)
+
+    parser_opencmd = subparsers.add_parser('open')
+    parser_opencmd.add_argument('title')
+    parser_opencmd.add_argument('description')
+    parser_opencmd.add_argument('node', nargs='+', help="Warning: Changing the node name will NOT drain a node nor resume the old node name")
+    ticket_args(parser_opencmd, conf)
+    parser_opencmd.set_defaults(func=opencmd)
+
+    return parser
+
+def release(args, conf):
+    ctt = cttlib.CTT(conf)
+    for node in args.node:
+        ctt.release(args.issue, datetime.datetime.now().isoformat(), node)
+
+def holdback(args, conf):
+    ctt = cttlib.CTT(conf)
+    ctt.update_holdback(args.node, args.state)
+
+def evclose(args):
+    ev_comment = args.comment
+    for cttissue in args.issue:
+        if not args.noev:
             if check_for_ticket(cttissue) is True:
                 ev_id = get_issue_data(cttissue)[3]   #ev_id
                 close_EV(cttissue, ev_comment)
-                update_ticket(cttissue, ev_id)  
-                update_issue(cttissue, 'updatedby', updatedby)
-                update_issue(cttissue, 'updatedtime', date)
-                view_tracker_new(cttissue,UserGroup,viewnotices)
-                log_history(cttissue,date,updatedby,'Closed EV ticket')
-                #print("EV closed for CTT issue %s" % (cttissue))
-                exit(0)
+                update_field(cttissue, 'ticket', ev_id)
             else:
                 print("There is no EV ticket attached to %s, Exiting!" % (cttissue))
                 exit(1)
         else:
             print("extraview_enabled is False. Can't close EV")
-            #exit(1)
 
-if '--evopen' in sys.argv[1]: # ADD FOR LOOP FOR MULTIPLE ISSUES   
-    #./ctt.py --evopen 12345                                       
-    parser = argparse.ArgumentParser(add_help=False, description="Cluster Ticket Tracker Version 2.1.0")
-    parser.add_argument('--evopen', action='store', dest='evopenvalue', nargs=1, required=True)
-    args = parser.parse_args()
-    if args.evopenvalue[0]:
-        cttissue = args.evopenvalue[0]
-        if extraview_enabled == "True":
+def evopen(args, config):
+    for cttissue in args.issue:
+        if not args.noev:
             if check_for_ticket(cttissue) is False:
                 ev_id = open_EV(cttissue)
-                update_ticket(cttissue, ev_id)
-                update_issue(cttissue, 'updatedby', updatedby)
-                update_issue(cttissue, 'updatedtime', date)
-                view_tracker_new(cttissue,UserGroup,viewnotices)
-                log_history(cttissue,date,updatedby,'Opened EV ticket %s' % (ev_id))
+                update_field(cttissue, 'ticket', ev_id)
                 assignto = get_issue_data(cttissue)[9]
                 assign_EV(cttissue,assignto)
                 print("EV %s opened for CTT issue %s" % (ev_id, cttissue))
-                update_issue(cttissue,'assignedto', assignedto)
+                update_field(cttissue,'assignedto', config['ev']['assignedto'])
             else:
                 print("There is already an EV ticket attached to this issue.")
         else:
             print("extraview_enabled is False. Can't open EV")
-            exit(0)   #May need to remove this exit when looping!
 
+def attach(args, config):
+    for issue in args.issue:
+        create_attachment(issue,args.filepath,config['DEFAULTS']['attach_location'],datetime.datetime.now().isoformat(),updatedby)
+        filename = ntpath.basename(args.filepath)
+        log_touch(issue, 'Attached file: %s/%s/%s.%s' % (config['DEFAULTS']['attach_location'], issue, datetime.datetime.now().isoformat()[0:16], filename))
+        comment_issue(issue, datetime.datetime.now().isoformat(), updatedby, 'Attached file: %s/%s/%s.%s' % (config['DEFAULTS']['attach_location'], issue, datetime.datetime.now().isoformat()[0:16], filename), GetUserGroup(usersdict, user))
 
-elif '--auto' in sys.argv[1]:
-    check_nolocal()
-    run_auto(date,severity,assignedto,updatedby,cluster,UserGroup)   
-    exit(0)  
-
-elif '--attach' in sys.argv[1]:
-    # ./ctt.py --attach 1020 /tmp/ipmi_sdr_list.out
-    import ntpath
-    parser = argparse.ArgumentParser(add_help=False, description="Cluster Ticket Tracker Version 2.1.0")
-    parser.add_argument('--attach', action='store', dest='attachment', nargs=2, required=True)    
-    args = parser.parse_args()
-
-    if args.attachment[0] and args.attachment[1]:  
-        create_attachment(args.attachment[0],args.attachment[1],attach_location,date,updatedby)
-        update_issue(args.attachment[0], 'updatedby', updatedby)
-        update_issue(args.attachment[0], 'updatedtime', date) 
-        filename = ntpath.basename(args.attachment[1])     
-        log_history(args.attachment[0], date, updatedby, 'Attached file: %s/%s/%s.%s' % (attach_location, args.attachment[0], date[0:16], filename))
-        comment_issue(args.attachment[0], date, updatedby, 'Attached file: %s/%s/%s.%s' % (attach_location, args.attachment[0], date[0:16], filename), UserGroup)
-        view_tracker_update(args.attachment[0],UserGroup)    
-    exit(0)
-
-elif '--list' in sys.argv[1]:
-    # ./ctt.py --list           # Shows all open
-    # ./ctt.py --list -s closed	# Options: open, closed, deleted
-    parser = argparse.ArgumentParser(add_help=False, description="Cluster Ticket Tracker Version 2.1.0")
-    parser.add_argument('--list', action='store_true', dest='listvalue', default=True, required=True)
-    parser.add_argument('-s', action='store', dest='statusvalue', choices=('open', 'closed', 'deleted', 'all'), required=False)
-    parser.add_argument('-v', action='store_true', dest='verbosevalue', default=False, required=False)
-    parser.add_argument('-vv', action='store_true', dest='vverbosevalue', default=False, required=False)
-    args = parser.parse_args()
-    
-    if not args.statusvalue:
-        args.statusvalue = 'open'
-    if args.verbosevalue is True:
-        get_issues_v(args.statusvalue)
-        exit(0)
-    if args.vverbosevalue is True:
-        get_issues_vv(args.statusvalue)
-        exit(0)
+def listcmd(args):
+    if args.verbose == 1:
+        get_issues_v(args.status)
+    if args.vverbosevalue > 1:
+        get_issues_vv(args.status)
     else:
-        get_issues(args.statusvalue)
-        exit(0) 
+        get_issues(args.status)
 
-elif '--show' in sys.argv[1]:
-    # ./ctt.py --show 1045
-    parser = argparse.ArgumentParser(add_help=False, description="Cluster Ticket Tracker Version 2.1.0")
-    parser.add_argument('--show', action='store', dest='issuenumber', nargs=1, required=True)    
-    parser.add_argument('-d', action='store_true', default=False)
-    args = parser.parse_args()
+def show(args):
+    for issue in args.issue:
+        get_issue_full(args.issue)
+        if args.d is True:
+            get_history(args.issue)
+        view_tracker_update(args.issue,GetUserGroup(usersdict, user))
 
-    if args.issuenumber[0]:
-        get_issue_full(args.issuenumber[0])
+def update(args):
+    for cttissue in args.issue:
+        if args.type:
+            update_field(cttissue, 'issuetype', args.type)
+            if args.type == 'h!':      #add ev function here for h!
+                add_siblings(cttissue,datetime.datetime.now().isoformat(),updatedby)
+            if 'h' in args.type and not args.noev:     #move this statement up under if for h!
+                if check_for_ticket(cttissue) is False:
+                    ev_id = open_EV(cttissue)
+                    update_field(cttissue, 'ticket', ev_id)
+                    if 'assign' not in vars(args):
+                        args.assign = get_issue_data(cttissue)[9]
 
-    if args.d is True:
-        get_history(args.issuenumber[0])
+        if args.title:
+            test_arg_size(args.title,what='issue title',maxchars=100)
+            update_field(cttissue, 'issuetitle', args.title)
 
-    view_tracker_update(args.issuenumber[0],UserGroup)
+        if args.description:
+            test_arg_size(args.description,what='issue description',maxchars=4000)
+            update_field(cttissue, 'issuedescription', args.description)
 
-elif '--update' in sys.argv[1]:
-    # ./ctt.py --update 1039 -s 1 -c cheyenne -n r1i1n1 -t 689725 -a casg
-    parser = argparse.ArgumentParser(add_help=False, description="Cluster Ticket Tracker Version 2.1.0")
-    parser.add_argument('--update', action='store', dest='issuenumber', nargs=1, required=True)    
-    parser.add_argument('-s','--severity', action='store', dest='severityvalue', choices=('1','2','3','4'), required=False)
-    parser.add_argument('-c','--cluster', action='store', dest='clustervalue', required=False)
-    parser.add_argument('-n','--node', action='store', dest='nodevalue', required=False)
-    parser.add_argument('-t','--ticket', action='store', dest='ticketvalue', required=False)
-    parser.add_argument('-T','--xticket', action='store', dest='xticketvalue', required=False)
-    parser.add_argument('-a','--assign', action='store', dest='assignedtovalue', required=False)
-    parser.add_argument('-i','--issuetitle', action='store', dest='issuetitlevalue', required=False)
-    parser.add_argument('-d','--description', action='store', dest='descvalue', required=False)    
-    parser.add_argument('-x', '--type', action='store', dest='typevalue', choices=('h','h!', 's', 't', 'u', 'o'), required=False)
-    parser.add_argument('--noev', action='store_true', dest='noevvalue', required=False)
-    args = parser.parse_args()
+        if args.severity:
+            update_field(cttissue, 'severity', args.severity)
 
-    issue_list = args.issuenumber[0].split(',')
-    for cttissue in issue_list:
+        if args.cluster:
+            update_field(cttissue, 'cluster', args.cluster)
 
-        if args.typevalue:
-            try:
-                if cttissue:     
-                    if args.typevalue == 'h!':      #add ev function here for h!
-                        add_siblings(cttissue,date,updatedby)
-                        args.typevalue = 'h'
-                    update_issue(cttissue, 'issuetype', args.typevalue)
-                    update_issue(cttissue, 'updatedby', updatedby)
-                    update_issue(cttissue, 'updatedtime', date)
-                    view_tracker_new(cttissue,UserGroup,viewnotices)
-                    log_history(cttissue,date,updatedby,'Updated issue type to %s' % (args.typevalue))
-                    if (args.typevalue == 'h' or args.typevalue == 'h!') and extraview_enabled == "True":     #move this statement up under if for h!
-                        if args.noevvalue is False:
-                            if check_for_ticket(cttissue) is False:
-                                ev_id = open_EV(cttissue)
-                                update_ticket(cttissue, ev_id)
-                                update_issue(cttissue, 'updatedby', updatedby)
-                                update_issue(cttissue, 'updatedtime', date)
-                                view_tracker_new(cttissue,UserGroup,viewnotices)
-                                log_history(cttissue,date,updatedby,'Opened EV ticket %s' % (ev_id))
-                                assignto = get_issue_data(cttissue)[9]
-                                assign_EV(cttissue,assignto)
-                                if args.typevalue == 'h!':
-                                    comment_EV(cttissue, 'Attached Siblings to this ctt issue (%s)' % (cttissue))
-                                print("EV %s opened for CTT issue %s assigned to %s" % (ev_id, cttissue, assignto))
-                            #else:
-                            #    print("There is an existing EV attached to this issue (%s). Not opening EV ticket." % (cttissue))
+        if args.node:
+            update_field(cttissue, 'node', args.node)
 
-            except IndexError:
-                parser.print_help()
+        if args.assign:
+            update_field(cttissue, 'assignedto', args.assign)
 
-        if args.issuetitlevalue:
-            test_arg_size(args.issuetitlevalue,what='issue title',maxchars=150)
-            try:
-                if cttissue:
-                    update_issue(cttissue, 'issuetitle', args.issuetitlevalue)
-                    update_issue(cttissue, 'updatedby', updatedby)
-                    update_issue(cttissue, 'updatedtime', date)
-                    view_tracker_new(cttissue,UserGroup,viewnotices)
-                    log_history(cttissue,date,updatedby,'Updated issue title to %s' % (args.issuetitlevalue))
-            except IndexError:
-                parser.print_help()
-
-        if args.descvalue:
-            test_arg_size(args.descvalue,what='issue description',maxchars=4000)
-            try:
-                if cttissue:
-                    update_issue(cttissue, 'issuedescription', args.descvalue)
-                    update_issue(cttissue, 'updatedby', updatedby)
-                    update_issue(cttissue, 'updatedtime', date)
-                    view_tracker_new(cttissue,UserGroup,viewnotices)
-                    log_history(cttissue,date,updatedby,'Updated issue description to %s' % (args.descvalue))
-            except IndexError:
-                parser.print_help()
-
-        if args.severityvalue:
-            try:
-                if cttissue:
-                    update_issue(cttissue, 'severity', args.severityvalue)
-                    update_issue(cttissue, 'updatedby', updatedby)
-                    update_issue(cttissue, 'updatedtime', date)
-                    view_tracker_new(cttissue,UserGroup,viewnotices)
-                    log_history(cttissue,date,updatedby,'Updated issue severity to %s' % (args.severityvalue))
-            except IndexError:
-                parser.print_help()
-
-        if args.clustervalue:
-            try:
-                if cttissue:
-                    update_issue(cttissue, 'cluster', args.clustervalue)
-                    update_issue(cttissue, 'updatedby', updatedby)
-                    update_issue(cttissue, 'updatedtime', date)
-                    view_tracker_new(cttissue,UserGroup,viewnotices)
-                    log_history(cttissue,date,updatedby,'Updated cluster to %s' % (args.clustervalue))
-            except IndexError:
-                parser.print_help()
-
-        if args.nodevalue:
-            try:
-                if cttissue:
-                    update_issue(cttissue, 'node', args.nodevalue)
-                    update_issue(cttissue, 'updatedby', updatedby)
-                    update_issue(cttissue, 'updatedtime', date)
-                    view_tracker_new(cttissue,UserGroup,viewnotices)
-                    log_history(cttissue,date,updatedby,'Updated node to %s' % (args.nodevalue))
-            except IndexError:
-                parser.print_help()
-
-        if args.assignedtovalue in groupsList:
-            try:
-                if cttissue:
-                    update_issue(cttissue, 'assignedto', args.assignedtovalue)
-                    update_issue(cttissue, 'updatedby', updatedby)
-                    update_issue(cttissue, 'updatedtime', date)
-                    view_tracker_new(cttissue,UserGroup,viewnotices)
-                    log_history(cttissue,date,updatedby,'Assigned issue to %s' % (args.assignedtovalue))
-
-                    if extraview_enabled == "True":
-                        if args.noevvalue is False:
-                            if check_for_ticket(cttissue) is True:
-                               assign_EV(cttissue, args.assignedtovalue)
-                               log_history(cttissue,date,updatedby,'Assigned EV ticket to %s' % (args.assignedtovalue))
-                    else:
-                        print("extraview_enabled is False. Can't assign EV")
-
-            except IndexError:
-                parser.print_help()
-        elif args.assignedtovalue != None:
-            print("Assign to group \"%s\" is not a valid users group, Exiting!" % (args.assignedtovalue))
-
-        if args.ticketvalue:
-            try:
-                if cttissue:
-                    update_ticket(cttissue, args.ticketvalue)
-                    update_issue(cttissue, 'updatedby', updatedby)
-                    update_issue(cttissue, 'updatedtime', date)
-                    view_tracker_new(cttissue,UserGroup,viewnotices)
-                    log_history(cttissue,date,updatedby,'Updated EV ticket to %s' % (args.ticketvalue))
-            except IndexError:
-                parser.print_help()
-
-        if args.xticketvalue:
-            try:
-                if cttissue:
-                    update_xticket(cttissue, args.xticketvalue)
-                    update_issue(cttissue, 'updatedby', updatedby)
-                    update_issue(cttissue, 'updatedtime', date)
-                    view_tracker_new(cttissue,UserGroup,viewnotices)
-                    log_history(cttissue,date,updatedby,'Updated external ticket to %s' % (args.xticketvalue))
-            except IndexError:
-                parser.print_help()
-
-
-elif '--comment' in sys.argv[1]: 
-    # ./ctt.py --comment 12390,12011 "Need an update"
-    parser = argparse.ArgumentParser(add_help=False, description="Cluster Ticket Tracker Version 2.0.0")
-    parser.add_argument('--noev', action='store_true', dest='noevvalue', required=False)
-    parser.add_argument('--comment', action='store', dest='comment', nargs=2, required=True)    
-    args = parser.parse_args()
-
-    if args.comment[0] and args.comment[1]:
-        issue_list = args.comment[0].split(',')
-        for cttissue in issue_list: 
-            test_arg_size(args.comment[1],what='comment',maxchars=500)
-            comment_issue(cttissue, date, updatedby, args.comment[1],UserGroup)
-            update_issue(cttissue, 'updatedby', updatedby)
-            update_issue(cttissue, 'updatedtime', date)
-            log_history(cttissue, date, updatedby, 'Commented issue with \"%s\"' % (args.comment[1]))
-
-            if extraview_enabled == "True":
-                if args.noevvalue is False:
-                    if check_for_ticket(cttissue) is True:
-                        comment_EV(cttissue, args.comment[1])
+            if not args.noev:
+                if check_for_ticket(cttissue) is True:
+                   assign_EV(cttissue, args.assign)
+                   log_history(cttissue,datetime.datetime.now().isoformat(),updatedby,'Assigned EV ticket to %s' % (args.assign))
             else:
-                #print("extraview_enabled is False. Can't comment EV")
+                print("extraview_enabled is False. Can't assign EV")
+
+        if args.ticket:
+            update_field(cttissue, 'ticket', args.ticket)
+
+        if args.xticket:
+            update_field(cttissue, 'xticket', args.xticket)
+
+def _comment(cttissue, args):
+    test_arg_size(args.comment,what='comment',maxchars=500)
+    comment_issue(cttissue, datetime.datetime.now().isoformat(), updatedby, args.comment,GetUserGroup(usersdict, user))
+    log_touch(cttissue, 'Commented issue with \"%s\"' % (args.comment))
+
+    if not args.noev:
+        if check_for_ticket(cttissue) is True:
+                comment_EV(cttissue, args.comment)
+
+def comment(args):
+    for cttissue in args.issue:
+        _comment(cttissue, args)
+
+def close(args, config):
+    for cttissue in args.issue:
+        _comment(cttissue, args)
+        node = get_hostname(cttissue)
+        if node is None:
+            print("Issue %s is not open" % (cttissue))
+            continue
+        node = ''.join(node)
+        if check_holdback(node) != False:
+            answer = input("\n%s is in holdback state. Are you sure you want to release this node and close issue? [y|n]: " % (node))
+            answer = answer.lower()
+            if answer == "n":
+                continue
+            elif answer == "y":
+                update_holdback(node, 'remove')
+                next
+            else:
                 exit(1)
 
+        close_issue(cttissue, datetime.datetime.now().isoformat(), updatedby,config)
+        log_touch(cttissue, 'Closed issue %s' % (args.comment))
 
-elif '--close' in sys.argv[1]:
-    # ./ctt.py --close 1028,1044 "Issue resolved"
-    parser = argparse.ArgumentParser(add_help=False, description="Cluster Ticket Tracker Version 2.0.0")
-    parser.add_argument('--close', action='store', dest='closevalue', nargs=2, required=True)    
-    parser.add_argument('--noev', action='store_true', dest='noevvalue', required=False)
-    args = parser.parse_args()
+        evclose(args)
 
-    if args.closevalue[0] and args.closevalue[1]:
-        issue_list = args.closevalue[0].split(',')
-        for cttissue in issue_list:
-            node = get_hostname(cttissue)
-            test_arg_size(args.closevalue[1],what='comment',maxchars=500)
-            comment_issue(cttissue, date, updatedby, args.closevalue[1],UserGroup)
-            update_issue(cttissue, 'updatedby', updatedby)
-            update_issue(cttissue, 'updatedtime', date)
-            if node is None:
-                print("Issue %s is not open" % (cttissue))
-                continue
-            node = ''.join(node)
-            if check_holdback(node) != False:
-                answer = input("\n%s is in holdback state. Are you sure you want to release this node and close issue? [y|n]: " % (node))
-                answer = answer.lower()
-                if answer == "n":
-                    continue
-                    #exit()
-                elif answer == "y":
-                    update_holdback(node, 'remove')
-                    next
-                else:
-                    exit()
+        if config['slack']['enabled'] == "True":
+            slack_message = "Issue %s for %s: %s closed by %s\n%s" % (cttissue, config['cluster']['name'], node, updatedby, args.comment)
+            slack = Slack(config)
+            slack.send_slack(slack_message)
 
-            close_issue(cttissue, date, updatedby)
-            log_history(cttissue, date, updatedby, 'Closed issue %s' % (args.closevalue[1]))
+def reopen(args,config):
+    for cttissue in args.issue:
+        test_arg_size(args.comment,what='comment',maxchars=500)
+        comment_issue(cttissue, datetime.datetime.now().isoformat(), updatedby, args.comment,GetUserGroup(usersdict, user))
+        update_field(cttissue, 'status', 'open')
+        if config['pbs']['enforcement'] == 'False':
+            print("pbs_enforcement is False. Not draining nodes")
+        else:
+            pbs_drain(cttissue,datetime.datetime.now().isoformat(),updatedby,get_hostname(cttissue))
 
-            if extraview_enabled == "True":
-                if args.noevvalue is False:
-                    if check_for_ticket(cttissue) is True:
-                        close_EV(cttissue, args.closevalue[1])
-            else:
-                print("extraview_enabled is False. Can't close EV")
+        if not args.noev:
+            if check_for_ticket(cttissue) is True:
+                reopen_EV(cttissue, args.comment)
+                assignto = get_issue_data(cttissue)[9]
+                assign_EV(cttissue,assignto)
+        else:
+            print("extraview_enabled is False. Can't close EV")
 
-            if slack_enabled == "True":
-                slack_message = "Issue %s for %s: %s closed by %s\n%s" % (cttissue, cluster, node, updatedby, args.closevalue[1])
-                send_slack(slack_bot_token, slack_channel, slack_message)
+def opencmd(args, config):
+    if config['DEFAULTS']['strict_node_match'] == 'False':
+        return
+    if not (args.node in config['DEFAULTS']['strict_node_match']):
+        print("Can not find %s in strict_node_match, Exiting!" % (args.node))
+        exit(1)
 
-elif '--reopen' in sys.argv[1]:  #Add EV function to reopen ev unless --noev
-    # ./ctt.py --reopen 10282,10122 "Accidental close"
-    parser = argparse.ArgumentParser(add_help=False, description="Cluster Ticket Tracker Version 2.0.0")
-    parser.add_argument('--reopen', action='store', dest='reopenvalue', nargs=2, required=True)    
-    parser.add_argument('--noev', action='store_true', dest='noevvalue', required=False)
-    args = parser.parse_args()
+    for node in args.node:
+        test_arg_size(args.title,what='issue title',maxchars=100)
+        test_arg_size(args.description,what='issue description',maxchars=4000)
+        cttissue = new_issue(datetime.datetime.now().isoformat(), args.severity, args.ticket, 'open', \
+                             args.cluster, node, args.title, \
+                             args.description, config['DEFAULTS']['assignedto'], updatedby, \
+                             updatedby, config['DEFAULTS']['issuetype'], 'unknown', datetime.datetime.now().isoformat(), GetUserGroup(usersdict, user), args.xticket)
+        log_history(cttissue, datetime.datetime.now().isoformat(), updatedby, 'new issue')
 
-    if args.reopenvalue[0] and args.reopenvalue[1]:
-        issue_list = args.reopenvalue[0].split(',')
-        for cttissue in issue_list:
-            test_arg_size(args.reopenvalue[1],what='comment',maxchars=500)
-            comment_issue(cttissue, date, updatedby, args.reopenvalue[1],UserGroup)
-            update_issue(cttissue, 'updatedby', updatedby)
-            update_issue(cttissue, 'updatedtime', date)
-            update_issue(cttissue, 'status', 'open')
-            log_history(cttissue, date, updatedby, 'Reopened issue %s' % (args.reopenvalue[1]))
-            if pbs_enforcement == 'False':
-                print("pbs_enforcement is False. Not draining nodes")
-            else:
-                pbs_drain(cttissue,date,updatedby,get_hostname(cttissue))
-            
-            if extraview_enabled == "True":
-                if args.noevvalue is False:
-                    if check_for_ticket(cttissue) is True:
-                        reopen_EV(cttissue, args.reopenvalue[1])
-                        assignto = get_issue_data(cttissue)[9]
-                        assign_EV(cttissue,assignto)
-            else:
-                print("extraview_enabled is False. Can't close EV")
-               
+        if args.type == 'h' and not args.noev:
+            evopen(args)
 
-
-
-elif '--open' in sys.argv[1]:
-    # ./ctt.py --open "Failed dimm on r1i1n1" "Description here" -c cheyenne -s 1 -n r1i1n1,r1i1n10 -a casg
-    parser = argparse.ArgumentParser(add_help=False, description="Cluster Ticket Tracker Version 2.0.0")
-    parser.add_argument('--open', action='store', dest='openvalue', nargs='+', required=True)
-    parser.add_argument('--noev', action='store_true', dest='noevvalue', required=False)
-    parser.add_argument('-s','--severity', action='store', dest='severityvalue', required=False)
-    parser.add_argument('-c','--cluster', action='store', dest='clustervalue', required=False)
-    parser.add_argument('-n','--node', action='store', dest='nodevalue', required=True)
-    parser.add_argument('-a','--assign', action='store', dest='assignedtovalue', required=False)
-    parser.add_argument('-t', '--ticket', action='store', dest='ticketvalue', required=False)
-    parser.add_argument('-T', '--xticket', action='store', dest='xticketvalue', required=False)
-    parser.add_argument('-x', '--type', action='store', dest='typevalue', choices=('h', 's', 't', 'u', 'o'), required=False)    
-    args = parser.parse_args()
-
-
-    if strict_node_match != 'False':
-        if not (args.nodevalue in strict_node_match):
-            print("Can not find %s in strict_node_match, Exiting!" % (args.nodevalue))
-            exit()
-
-    if args.assignedtovalue:              #need this still?
-        assignedto = args.assignedtovalue #need this still?
-    if not args.xticketvalue:
-       args.xticketvalue = '---'
-    if not args.ticketvalue:      
-        args.ticketvalue = '---'
-    if not args.severityvalue:
-        args.severityvalue = severity 
-    if not args.clustervalue:
-        args.clustervalue = cluster
-
-    if args.openvalue[0] and args.openvalue[1]:
-        node_list = args.nodevalue.split(',')
-        if assignedto in groupsList:
-            for node in node_list: 
-                test_arg_size(args.openvalue[0],what='issue title',maxchars=100)
-                test_arg_size(args.openvalue[1],what='issue description',maxchars=4000)
-                cttissue = new_issue(date, args.severityvalue, args.ticketvalue, 'open', \
-                                     args.clustervalue, node, args.openvalue[0], \
-                                     args.openvalue[1], assignedto, updatedby, \
-                                     updatedby, issuetype, 'unknown', date, UserGroup, args.xticketvalue) 
-                log_history(cttissue, date, updatedby, 'new issue')
-
-                if args.typevalue is 'h' and extraview_enabled == "True":
-                    if args.noevvalue is False:                                                                                                                                  
-                        if check_for_ticket(cttissue) is False:                                                                                                                  
-                            ev_id = open_EV(cttissue)                                                                                                                            
-                            update_ticket(cttissue, ev_id)                                                                                                                       
-                            update_issue(cttissue, 'updatedby', updatedby)                                                                                                       
-                            update_issue(cttissue, 'updatedtime', date)                                                                                                          
-                            view_tracker_new(cttissue,UserGroup,viewnotices)                                                                                                     
-                            log_history(cttissue,date,updatedby,'Updated ticket to %s' % (ev_id))                                                                               
-                            print("EV %s opened for CTT issue %s" % (ev_id, cttissue))                                                                                           
-                        #else:                                                                                                                                                    
-                        #    print("There is an existing EV attached to this issue (%s). Not opening EV ticket." % (cttissue))
-
-                if args.assignedtovalue in groupsList:                                                                                                                                       
-                    update_issue(cttissue, 'assignedto', args.assignedtovalue)                                                                                                       
-                    update_issue(cttissue, 'updatedby', updatedby)                                                                                                                   
-                    update_issue(cttissue, 'updatedtime', date)                                                                                                                      
-                    view_tracker_new(cttissue,UserGroup,viewnotices)                                                                                                                 
-                    log_history(cttissue,date,updatedby,'Assigned issue to %s' % (args.assignedtovalue))                                                                            
-                                                                                                                                                                                      
-                    if extraview_enabled == "True":                                                                                                                                  
-                        if args.noevvalue is False:                                                                                                                                  
-                            if check_for_ticket(cttissue) is True:                                                                                                                   
-                                assign_EV(cttissue, args.assignedtovalue)                                                                                                             
-                    else:                                                                                                                                                            
-                        print("extraview_enabled is False. Can't assign EV")  
-
-        else:                                                                                                                                           
-            print("Assign to group \"%s\" is not a valid users group, Exiting!" % (args.assignedtovalue))
-
-
-elif '--help' in sys.argv[1] or '-h' in sys.argv[1]:
-    show_help()
-
-elif '--stats' in sys.argv[1]:
-    from cttstats import *
-    
-    # ./ctt.py --stats -n casper15  # ./ctt.py --stats -c
-    parser = argparse.ArgumentParser(add_help=False, description="Cluster Ticket Tracker Version 2.0.0")
-    parser.add_argument('--stats', action='store_true', required=True) 
-    parser.add_argument('-n','--node', action='store', dest='nodevalue', required=False)
-    parser.add_argument('-c','--counts', action='store_true', dest='countsvalue', required=False)
-    args = parser.parse_args()
-
-    if args.countsvalue:
+def stats(args):
+    if args.counts:
         run_stats_counts()
-        exit(0)
-    
-    if args.nodevalue:
-        run_stats_node(args.nodevalue)
-        exit(0)
+    if args.node:
+        run_stats_node(args.node)
 
-else:
-    show_help()
+def update_field(issue, field, to):
+    if field == 'ticket':
+        update_ticket(issue, to)
+    elif field == 'xticket':
+        update_xticket(issue, to)
+    else:
+        update_issue(issue, field, to)
+    log_touch(issue, 'Assigned %s to %s' % (field, to))
 
+
+if '__main__' == __name__:
+    main()
+    sys.exit(0)
