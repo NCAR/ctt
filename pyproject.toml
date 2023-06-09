@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.scripts]
-ctt = "ctt.ctt:main"
+ctt = "ctt.cli:main"
 cron = "ctt.cron:main"
 
 [tool.ruff]

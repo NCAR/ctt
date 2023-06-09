@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import re
+import ctt
 
 def main(date, severity, assignedto, updatedby, cluster, UserGroup):
     try:
@@ -79,7 +80,7 @@ def main(date, severity, assignedto, updatedby, cluster, UserGroup):
 
         self.db.siblings_update_state(node, state)
 
-        transient_errors_check(node, date, updatedby)
+        _transient_errors_check(node, date, updatedby)
 
         if (
             node_open_check(node) is True
@@ -212,6 +213,24 @@ def main(date, severity, assignedto, updatedby, cluster, UserGroup):
                         pbs_drain(cttissue, date, "ctt", nodes2drain)
                         update_issue(cttissue, "state", "offline")
                         log_history(cttissue, date, "ctt", "Auto forced pbs offline")
+
+def _transient_errors_check(node, date, updatedby):  # jon
+      if self.db.is_primary(node) and transient_errors_enabled == "True":
+          cttissue = self.db.cttissue(node)
+          issue = self.db.issue(cttissue)
+          transient_errors_list = transient_errors.split(", ")
+          for item in transient_errors_list:
+              if item in issue.title:
+                  close_issue(cttissue, date, updatedby)
+                  closemessage = "Transient error: %s" % (item)
+                  if slack_enabled == "True":
+                      self.slack.send_slack(
+                          "Issue %s for %s: %s closed by ctt\n%s"
+                          % (cttissue, cluster, node, closemessage)
+                      )
+                  self.log_history(
+                      cttissue, date, "ctt", "Closed issue %s" % (closemessage)
+                  )
 
 
 if __name__ == "__main__":

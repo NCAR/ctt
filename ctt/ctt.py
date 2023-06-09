@@ -11,183 +11,69 @@ import config
 import cttlib
 import slack
 
+import os
+import shutil
+import sys
+import textwrap
 
-def _authorized_team(user, authorized_teams):
-    for team in authorized_teams:
-        t = grp.getgrnam(team)
-        if user in t[3]:
-            return t[0]
-    return None
+import db
+import extraview
+import pbs
+import slack
+from cluster import casper as cluster
 
-
-def main():
-    conf = config.get_config()
-    logme = " ".join(sys.argv)
-    syslog(logme)
-
-    user = os.environ.get("SUDO_USER")
-
-    if user is None:
-        user = getpass.getuser()  # if not run via sudo
-
-    if user == "root" and os.getenv("CRONTAB") != "True":
-        print("You can't run ctt as root")
-        sys.exit(1)
-
-    if not _authorized_user(getpass.getuser(), conf.get("users", "teams").split(" ")):
-        print("Current user is not authorized to run ctt")
-        sys.exit(1)
-
-    parser = cli(conf)
-    args = parser.parse_args()
-
-    # when no subcommand given func isn't set
-    if "func" not in vars(args):
-        parser.print_help()
-    else:
-        args.func(args, conf)
-
-
-def _issues(parser):
-    parser.add_argument("issue", type=int, nargs="+", help="ctt issue numbers")
-
-
-def _issues_and_comment(parser):
-    issues(parser)
-    parser.add_argument("comment")
-
-
-def _ticket_args(parser, conf):
-    parser.add_argument("-T", "--xticket", help="Toggle an external (HPE,IBM) ticket")
-    parser.add_argument("-a", "--assign", choices=("ssg", "casg"))
-    parser.add_argument("-c", "--cluster", default=conf.get("cluster", "name"))
-    parser.add_argument("-s", "--severity", choices=("1", "2", "3", "4"))
-    parser.add_argument(
-        "-t", "--ticket", help="Attach an existing EV ticket to this issue"
-    )
-    parser.add_argument(
-        "-x",
-        "--type",
-        choices=("h", "h!", "s", "t", "u", "o"),
-        help="Hardware, Software, Test, Unknown, Other",
-    )
-
-
-def _cli(conf):
-    parser = argparse.ArgumentParser()
-    ev_enabled = "True" != conf.getboolean("ev", "enabled")
-    parser.add_argument(
-        "--noev",
-        action="store_true",
-        help="Do not update EV ticket",
-        default=(ev_enabled),
-    )
-    subparsers = parser.add_subparsers()
-    # TODO improve reuse of subparser args since so many subcommands have similar arguments
-
-    parser_release = subparsers.add_parser("release")
-    parser_release.add_argument("issue", type=int, help="ctt issue number")
-    parser_release.add_argument("node", nargs="+")
-    parser_release.set_defaults(func=release)
-
-    parser_holdback = subparsers.add_parser("holdback")
-    parser_holdback.add_argument("node")
-    parser_holdback.add_argument("state", choices=("add", "remove"))
-    parser_holdback.set_defaults(func=holdback)
-
-    parser_evopen = subparsers.add_parser("evopen")
-    issues(parser_evopen)
-    parser_evopen.set_defaults(func=evopen)
-
-    parser_attach = subparsers.add_parser("attach")
-    issues(parser_attach)
-    parser_attach.add_argument("filepath")
-    parser_attach.set_defaults(func=attach)
-
-    parser_show = subparsers.add_parser("show")
-    issues(parser_show)
-    parser_show.add_argument(
-        "-d", action="store_true", help="Show detail/history of ticket"
-    )
-    parser_show.set_defaults(func=show)
-
-    parser_stats = subparsers.add_parser("stats")
-    parser_stats.add_argument("-n", "--node")
-    parser_stats.add_argument("-c", "--counts", action="store_true")
-    parser_stats.set_defaults(func=stats)
-
-    parser_listcmd = subparsers.add_parser("list")
-    parser_listcmd.add_argument(
-        "-s",
-        "--status",
-        choices=("open", "closed", "deleted", "all"),
-        default="open",
-    )
-    parser_listcmd.add_argument("--verbose", "-v", action="count", default=0)
-    parser_listcmd.set_defaults(func=listcmd)
-
-    parser_evclose = subparsers.add_parser("evclose")
-    issues_and_comment(parser_evclose)
-    parser_evclose.set_defaults(func=evclose)
-
-    parser_comment = subparsers.add_parser("comment")
-    issues_and_comment(parser_comment)
-    parser_comment.set_defaults(func=comment)
-
-    parser_close = subparsers.add_parser("close")
-    issues_and_comment(parser_close)
-    parser_close.set_defaults(func=close)
-
-    parser_reopen = subparsers.add_parser("reopen")
-    issues_and_comment(parser_reopen)
-    parser_reopen.set_defaults(func=reopen)
-
-    parser_update = subparsers.add_parser("update")
-    issues(parser_update)
-    ticket_args(parser_update, conf)
-    parser_update.add_argument("-d", "--description")
-    parser_update.add_argument("-i", "--issuetitle", dest="title")
-    parser_update.add_argument(
-        "-n",
-        "--node",
-        nargs="+",
-        help="Warning: Changing the node name will NOT drain a node nor resume the old node name",
-    )
-    parser_update.set_defaults(func=update)
-
-    parser_opencmd = subparsers.add_parser("open")
-    parser_opencmd.add_argument("title")
-    parser_opencmd.add_argument("description")
-    parser_opencmd.add_argument(
-        "node",
-        nargs="+",
-        help="Warning: Changing the node name will NOT drain a node nor resume the old node name",
-    )
-    ticket_args(parser_opencmd, conf)
-    parser_opencmd.set_defaults(func=opencmd)
-
-    return parser
-
+"""
+        self.user = config.get("user", "user")
+        self.group = config.get("user", "group")
+        self.teams = config.get("users", "teams").split(" ")
+        self.pbs_enforcement = config.get("pbs", "enabled")
+        self.slack_enabled = config.getboolean("slack", "enabled")
+        self.cluster = config.get("cluster", "name")
+        self.ev = extraview.Client(config)
+        self.slack = slack.Slack(config)
+        self.db = db.DB(config)
+"""
 
 def release(args, conf):
-    ctt = cttlib.CTT(conf)
+    date = datetime.datetime.now().isoformat()
+    db = db.DB(config)
     for node in args.node:
-        ctt.release(args.issue, datetime.datetime.now().isoformat(), node)
+        cttissue = args.issue
+        issue = db.issue(cttissue)
+        if not issue:
+            print("Error: Issue not found")
+        elif issue.hostname == cttissue:
+            print(
+                "Error: Issue is for this node, can only release siblings from a ticket"
+            )
+        else:
+            db.release_sib(cttissue, node)
+            log_touch(
+                issue, "Released node {} cttissue: {}".format(node, cttissue), date
+            )
+
+        if not db.in_other_open_issue(cttissue, node) and config.getboolean("pbs", "enabled"):
+            print("Resuming node")
+            pbs.resume(cttissue, date, self.user, node)
+            self.log_history(issue, date, self.user, "ctt resumed %s" % (node))
+
+def holdback(args, config):
+    db = db.DB(config)
+    db.update_holdback(node, state)
 
 
-def holdback(args, conf):
-    ctt = cttlib.CTT(conf)
-    ctt.update_holdback(args.node, args.state)
-
-
-def evclose(args):
+def evclose(args, config):
     ev_comment = args.comment
     for cttissue in args.issue:
         if not args.noev:
-            if cttlib.check_for_ticket(cttissue) is True:
+            db = db.DB(config)
+            issue = db.issue(cttissue)
+            if issue is not None and issue.ticket is not None:
+                ev.close(issue.ticket, "CTT Comment:\n%s" % (ev_comment))
+                print("ev %s closed" % (issue.ticket))
                 ev_id = cttlib.get_issue_data(cttissue)[3]  # ev_id
-                cttlib.close_ev(cttissue, ev_comment)
-                update_field(cttissue, "ticket", ev_id)
+                issue.ticket = ev_id
+                issue.update(db)
             else:
                 print("There is no EV ticket attached to %s, Exiting!" % (cttissue))
                 sys.exit(1)
@@ -198,13 +84,15 @@ def evclose(args):
 def evopen(args, config):
     for cttissue in args.issue:
         if not args.noev:
-            if cttlib.check_for_ticket(cttissue) is False:
-                ev_id = cttlib.open_ev(cttissue)
-                update_field(cttissue, "ticket", ev_id)
-                assignto = cttlib.get_issue_data(cttissue)[9]
-                cttlib.assign_ev(cttissue, assignto)
+            db = db.DB(config)
+            issue = db.issue(cttissue)
+            if issue is not None and issue.ticket is not None:
+                ev_id = _open_ev(issue, config.get("cluster", "name"))
+                issue.ticket = ev_id
+                issue.assignedto = config["ev"]["assignedto"]
+                _assign_ev(issue, issue.assignto)
                 print("EV %s opened for CTT issue %s" % (ev_id, cttissue))
-                update_field(cttissue, "assignedto", config["ev"]["assignedto"])
+                issue.update(db)
             else:
                 print("There is already an EV ticket attached to this issue.")
         else:
@@ -213,7 +101,7 @@ def evopen(args, config):
 
 def attach(args, conf):
     for issue in args.issue:
-        cttlib.create_attachment(
+        _create_attachment(
             issue,
             args.filepath,
             conf["DEFAULTS"]["attach_location"],
@@ -270,10 +158,15 @@ def show(args, conf):
         )
 
 
-def update(args):
+def update(args, config):
     for cttissue in args.issue:
+        db = db.DB(config)
+        issue = db.issue(cttissue)
+        if issue is None:
+            print("Issue does not exist")
+            exit(1)
         if args.type:
-            update_field(cttissue, "issuetype", args.type)
+            issue.type = args.type
             if args.type == "h!":  # add ev function here for h!
                 cttlib.add_siblings(
                     cttissue,
@@ -283,78 +176,78 @@ def update(args):
             if (
                 "h" in args.type and not args.noev
             ):  # move this statement up under if for h!
-                if cttlib.check_for_ticket(cttissue) is False:
-                    ev_id = cttlib.open_ev(cttissue)
-                    update_field(cttissue, "ticket", ev_id)
-                    if "assign" not in vars(args):
-                        args.assign = cttlib.get_issue_data(cttissue)[9]
+                if issue.ticket is not None:
+                    ev_id = _open_ev(issue, config.get("cluster", "name"))
+                    issue.ticket = ev_id
 
         if args.title:
             cttlib.test_arg_size(args.title, what="issue title", maxchars=100)
-            update_field(cttissue, "issuetitle", args.title)
+            issue.title = args.title
 
         if args.description:
             cttlib.test_arg_size(
                 args.description, what="issue description", maxchars=4000
             )
-            update_field(cttissue, "issuedescription", args.description)
+            issue.description = args.description
 
         if args.severity:
-            update_field(cttissue, "severity", args.severity)
-
-        if args.cluster:
-            update_field(cttissue, "cluster", args.cluster)
+            issue.severity = args.severity
 
         if args.node:
-            update_field(cttissue, "node", args.node)
+            issue.hostname = args.node
 
         if args.assign:
-            update_field(cttissue, "assignedto", args.assign)
+            issue.assignedto = args.assign
 
             if not args.noev:
-                if cttlib.check_for_ticket(cttissue) is True:
-                    cttlib.assign_ev(cttissue, args.assign)
+                if issue.ticket is not None:
+                    _assign_ev(issue, issue.assignedto)
                     cttlib.log_history(
                         cttissue,
                         datetime.datetime.now().isoformat(),
                         os.environ.get("SUDO_USER"),
-                        "Assigned EV ticket to %s" % (args.assign),
+                        "Assigned EV ticket to %s" % (issue.assignedto),
                     )
             else:
                 print("extraview_enabled is False. Can't assign EV")
 
         if args.ticket:
-            update_field(cttissue, "ticket", args.ticket)
+            issue.ticket = args.ticket
 
         if args.xticket:
-            update_field(cttissue, "xticket", args.xticket)
+            issue.xticket = args.xticket
 
+        issue.update(db)
 
-def _addcomment(cttissue, args):
-    cttlib.test_arg_size(args.comment, what="comment", maxchars=500)
-    cttlib.comment_issue(
-        cttissue,
-        datetime.datetime.now().isoformat(),
-        updatedby,
-        args.comment,
-        GetUserGroup(usersdict, user),
-    )
-    log_touch(cttissue, 'Commented issue with "%s"' % (args.comment))
-
-    if not args.noev:
-        if cttlib.check_for_ticket(cttissue) is True:
-            cttlib.comment_ev(cttissue, args.comment)
-
-
-def _comment(args):
+def comment(args, config):
     for cttissue in args.issue:
-        _addcomment(cttissue, args)
+        cttlib.test_arg_size(args.comment, what="comment", maxchars=500)
+        cttlib.comment_issue(
+            cttissue,
+            datetime.datetime.now().isoformat(),
+            updatedby,
+            args.comment,
+            GetUserGroup(usersdict, user),
+        )
+        log_touch(cttissue, 'Commented issue with "%s"' % (args.comment))
+    
+        if not args.noev:
+            db = db.DB(config)
+            issue = db.issue(cttissue)
+            if is issue is not None and issue.ticket is not None:
+                ev.add_resolver_comment(issue.ticket, "CTT Comment:\n%s" % (args.comment))
+                print("ev %s updated with '%s'" % (issue.ticket, args.comment))
 
 
 def close(args, config):
     for cttissue in args.issue:
         _comment(cttissue, args)
-        node = cttlib.get_hostname(cttissue)
+        db = db.DB(config)
+        issue = db.issue(cttissue)
+        if issue is None:
+            print("Issue {} does not exist".format(cttissue))
+            continue
+        node = issue.hostname
         if node is None:
             print("Issue %s is not open" % (cttissue))
             continue
@@ -368,7 +261,8 @@ def close(args, config):
             if answer == "n":
                 continue
             elif answer == "y":
-                cttlib.update_holdback(node, "remove")
+                db = db.DB(config)
+                db.update_holdback(node, "remove")
                 next
             else:
                 sys.exit(1)
@@ -407,7 +301,7 @@ def reopen(args, conf):
                 os.environ.get("SUDO_USER"), conf.get("users", "teams").split(" ")
             ),
         )
-        update_field(cttissue, "status", "open")
+        cttlib.update_field(cttissue, "status", "open")
         if conf["pbs"]["enforcement"] == "False":
             print("pbs_enforcement is False. Not draining nodes")
         else:
@@ -419,10 +313,14 @@ def reopen(args, conf):
             )
 
         if not args.noev:
-            if cttlib.check_for_ticket(cttissue) is True:
-                cttlib.reopen_ev(cttissue, args.comment)
+            db = db.DB(config)
+            issue = db.issue(cttissue)
+            if issue is not None and issue.ticket is not None:
+                ev.open(issue.ticket, "CTT Comment:\n%s" % (ev_comment))
+                print("ev %s reopened" % (issue.ticket))
+
                 assignto = cttlib.get_issue_data(cttissue)[9]
-                cttlib.assign_ev(cttissue, assignto)
+                _assign_ev(issue, assignto)
         else:
             print("extraview_enabled is False. Can't close EV")
 
@@ -467,7 +365,6 @@ def opencmd(args, conf):
         if args.type == "h" and not args.noev:
             evopen(args)
 
-
 def stats(args):
     if args.counts:
         cttlib.run_stats_counts()
@@ -475,16 +372,293 @@ def stats(args):
         cttlib.run_stats_node(args.node)
 
 
-def _update_field(issue, field, to):
-    if field == "ticket":
-        cttlib.update_ticket(issue, to)
-    elif field == "xticket":
-        cttlib.update_xticket(issue, to)
+def _assign_ev(issue, assignto):
+    """assign ev to group"""
+    ev.assign_group(
+        issue.ticket,
+        assignto,
+        None,
+        {
+            "COMMENTS": """
+        CTT issue number {} assigned to {}.
+        """.format(
+                cttissue, assignto
+            )
+        },
+    )
+
+def _open_ev(issue, cluster):
+    """open ev ticket"""
+    issue_data_formatted = (
+        "CTT issue: %s\nCTT Severity: %s\nHostname: %s\nIssue Title: %s\nIssue Description: %s"
+        % (
+            issue.cttissue,
+            issue.severity,
+            issue.hostname,
+            issue.title,
+            issue.description,
+        )
+    )
+    ev_id = ev.create(
+        "ssgev",
+        "ssg",
+        None,
+        "CTT Issue: %s: %s: %s "
+        % (cluster.capitalize(), issue.hostname, issue.title),
+        "%s" % (issue_data_formatted),
+        {
+            "HELP_LOCATION": ev.get_field_value_to_field_key(
+                "HELP_LOCATION", "NWSC"
+            ),
+            "HELP_HOSTNAME": ev.get_field_value_to_field_key(
+                "HELP_HOSTNAME", issue.ticket.capitalize()
+            ),
+            "HELP_HOSTNAME_CATEGORY": ev.get_field_value_to_field_key(
+                "HELP_HOSTNAME_CATEGORY", "Supercomputer"
+            ),
+            "HELP_HOSTNAME_OTHER": issue.cluster,
+        },
+    )
+    return ev_id
+
+def _create_attachment(cttissue, filepath, attach_location, date, updatedby):
+    if os.path.isfile(filepath) is False:
+        print("File %s does not exist, Exiting!" % (filepath))
+        exit(1)
+    if os.path.exists(attach_location) is False:
+        print(
+            "Attachment root location does not exist. Check ctt.ini attach_location setting"
+        )
+        exit(1)
+    if issue_exists_check(cttissue) is False:
+        print(
+            "Issue %s is not open. Can not attach a file to a closed, deleted, or nonexisting issue"
+            % (cttissue)
+        )
+        exit(1)
+    newdir = "%s/%s" % (attach_location, cttissue)
+    if os.path.exists(newdir) is False:
+        os.mkdir(newdir)
+    thefile = os.path.basename(filepath)
+    destination_file = "%s.%s" % (date[0:16], thefile)
+    final_destination_file = "%s/%s" % (newdir, destination_file)
+    shutil.copy(filepath, final_destination_file)
+    if os.path.isfile(final_destination_file) is True:
+        print("File attached to %s" % (cttissue))
     else:
-        cttlib.update_issue(issue, field, to)
-    cttlib.log_touch(issue, "Assigned %s to %s" % (field, to))
+        print("Error: File not attached, unknown error")
+
+# ===========================================================
+
+class CTT:
+    def __init__(self, config):
+        self.user = config.get("user", "user")
+        self.group = config.get("user", "group")
+        self.teams = config.get("users", "teams").split(" ")
+        self.pbs_enforcement = config.get("pbs", "enabled")
+        self.slack_enabled = config.getboolean("slack", "enabled")
+        self.cluster = config.get("cluster", "name")
+        self.ev = extraview.Client(config)
+        self.slack = slack.Slack(config)
+        self.db = db.DB(config)
+
+    def get_hostname(cttissue):
+        issue = self.db.issue(cttissue)
+        if issue:
+            return issue.hostname
+        else:
+            return None
+
+    def check_node_state(
+        node, state
+    ):  # checks if node has open issue, returns cttissue number
+        issue = self.db.node_issue(node)
+        if issue:
+            return issue.cttissue
+        else:
+            return None
+
+    def get_history(cttissue):  # used only when issuing --show with -d option
+        return self.db.get_history(cttissue)
+
+    def log_history(self, issue, date, updatedby, info):
+        self.db.log_history(issue.cttissue, date, updatedby, info)
+
+    def conv_issuetype(issuetype):
+        s, h, o, t, u = ("software", "hardware", "other", "test", "unknown")
+        if issuetype == "s":
+            return s
+        if issuetype == "h":
+            return h
+        if issuetype == "o":
+            return o
+        if issuetype == "t":
+            return t
+        if issuetype == "u":
+            return u
+
+    def get_issue_full(cttissue):  # used for the --show option
+        issue = self.db.issue(cttissue)
+        if issue is None:
+            print("Issue not found")
+            return
+        print("CTT Issue: %s" % (issue.cttissue))
+        print("ev Ticket: %s" % (issue.ticket))
+        print("External Ticket: %s" % (issue.xticket))
+        print("Date Opened: %s" % (issue.date))
+        print("Assigned To: %s" % (issue.assignedto))
+        print("Issue Originator: %s" % (issue.originator))
+        print("Last Updated By: %s" % (issue.updatedby))
+        print("Last Update Time: %s" % (issue.updatedtime))
+        print("Severity: %s" % (issue.severity))
+        print("Status: %s" % (issue.status))
+        print("Type: %s" % (conv_issuetype(issue.type)))
+        print("Cluster: %s" % (issue.cluster))
+        print("Hostname: %s" % (issue.hostname))
+        print("Node State: %s" % (issue.state))
+        print("----------------------------------------")
+        print("\nIssue Title:\n%s" % (issue.title))
+        print("\nIssue Description:")
+        print(textwrap.fill(issue.description, width=60))
+        print("\n----------------------------------------")
+        get_comments(issue.cttissue)
+
+    def get_comments(cttissue):  # used for --show option (displays the comments)
+        comments = self.db.get_comments(cttissue)
+        for c in comments:
+            print("\nComment by: %s at %s" % (c[0], c[1]))
+            print(textwrap.fill(c[2], width=60))
+
+    def comment_issue(cttissue, date, updatedby, newcomment, UserGroup):
+        self.db.comment_issue(cttissue, date, updatedby, newcomment)
+        self.view_tracker_new(cttissue, UserGroup)
+
+    def issue_exists_check(cttissue):
+        issue = self.db.issue(cttissue)
+        return issue is None
+
+    def get_issues(statustype):  # used for the --list option
+        cols = "{0:<8}{1:<19}{2:<12}{3:<13}{4:<16}{5:<6}{6:<12}{7:<11}{8:<12}{9:<28}"
+        fmt = cols.format
+        print(
+            fmt(
+                "ISSUE",
+                "DATE",
+                "ev TICKET",
+                "HOSTNAME",
+                "STATE",
+                "Sev",
+                "TYPE",
+                "ASSIGNED",
+                "UNSEEN",
+                "TITLE (25 chars)",
+            )
+        )
+        issues = self.db.get_issues(statustype)
+        for i in issues:
+            issue_str = fmt(
+                "%s" % i.cttissue,
+                "%s" % i.date,
+                "%s" % i.ticket,
+                "%s" % i.hostname,
+                "%s" % i.state,
+                "%s" % i.severity,
+                "%s" % i.type,
+                "%s" % i.assignedto,
+                "%s" % i.viewtracker,
+                "%s" % i.title,
+            )
+            if i.severity == 1:
+                print(bcolors.FAIL + issue_str + bcolors.ENDC)
+            else:
+                print(issue_str)
+
+    def delete_issue(cttissue):
+        issue = self.db.issue(cttissue)
+        if issue:
+            issue.status = "deleted"
+            issue.update()
+
+    def close_issue(cttissue, date, updatedby):
+        issue = self.db.issue(cttissue)
+        if not issue:
+            print("issue not found")
+            return
+        if issue.status != "open":
+            print("issue status is {}, can't close".format(issue.status))
+            return
+        issue.status = "closed"
+
+        if pbs_enforcement == "True":
+            pbs_resume(cttissue, date, updatedby, issue.hostname)
+        else:
+            print("pbs_enforcement is False. Not resuming nodes")
+        issue.update()
+
+    def new_issue(
+        date,
+        severity,
+        ticket,
+        status,
+        cluster,
+        hostname,
+        issuetitle,
+        issuedescription,
+        assignedto,
+        issueoriginator,
+        updatedby,
+        issuetype,
+        state,
+        updatedtime,
+        UserGroup,
+        xticket,
+    ):
+        issue = self.db.new_issue(
+            {
+                "date": date,
+                "severity": severity,
+                "ticket": ticket,
+                "status": status,
+                "hostname": hostname,
+                "title": issuetitle,
+                "description": issuedescription,
+                "assignedto": assignedto,
+                "originator": issueoriginator,
+                "updatedby": updatedby,
+                "type": type,
+                "state": state,
+                "updatedtime": updatedtime,
+                "xticket": xticket,
+            }
+        )
+
+        print("created issue {}".format(issue.cttissue))
+
+        self.view_tracker_new(issue.cttissue, UserGroup)
+
+        if pbs_enforcement == "True":
+            nodes2drain = issue.hostname.split(" ")
+            pbs_drain(cttissue, date, updatedby, nodes2drain)
+        else:
+            print("pbs_enforcement is False. Not draining nodes")
+
+        return issue.cttissue
+
+    def log_touch(self, issue, msg, when):
+        if issue:
+            issue.updatedby = self.user
+            issue.updatedtime = when
+        self.view_tracker_new(issue, self.group)
+        self.log_history(issue, when, self.user, msg)
 
 
-if "__main__" == __name__:
-    main()
-    sys.exit(0)
+class bcolors:
+    HEADER = "\033[95m"
+    OKBLUE = "\033[94m"
+    OKCYAN = "\033[96m"
+    OKGREEN = "\033[92m"
+    WARNING = "\033[93m"
+    FAIL = "\033[91m"
+    ENDC = "\033[0m"
+    BOLD = "\033[1m"
+    UNDERLINE = "\033[4m"
