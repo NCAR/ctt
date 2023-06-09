@@ -1,6 +1,6 @@
+#!/usr/bin/env python3
 import os
 import re
-
 
 def main(date, severity, assignedto, updatedby, cluster, UserGroup):
     try:

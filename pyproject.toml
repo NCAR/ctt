@@ -1,4 +1,30 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ctt"
+version = "3.0.0"
+authors = [
+    { name="Jon Roberts", email="robertsj@ucar.edu" },
+    { name="Will Shanks", email="shanks@ucar.edu" },
+]
+description = "Tool for tracking tickets for a HPC cluster"
+readme = "README.md"
+requires-python = ">=3.6"
+url = "https://github.com/NCAR/ctt"
+dependencies = [
+    "slack_sdk",
+    "requests",
+    "sqlite3",
+]
+
+[project.scripts]
+ctt = "ctt.ctt:main"
+cron = "ctt.cron:main"
+
 [tool.ruff]
 ignore = ["E501", "E722"]
 select = ["E", "F", "I", "W"]
 # TODO add "N" and "PL"
+
