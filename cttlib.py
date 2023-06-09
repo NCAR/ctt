@@ -11,6 +11,7 @@ from ClusterShell.Task import task_self
 
 import config
 import extraview
+import slack
 
 config = config.get_config()
 defaults = config["DEFAULTS"]
@@ -171,20 +172,6 @@ def update_holdback(node, state):
                     VALUES(?, ?)""",
                 (node, "True"),
             )
-
-
-def send_slack(slack_bot_token, slack_channel, slack_message):
-    from slack_sdk import WebClient
-    from slack_sdk.errors import SlackApiError
-
-    client = WebClient(token=slack_bot_token)
-
-    try:
-        client.chat_postMessage(channel=slack_channel, text=slack_message)
-
-    except SlackApiError as e:
-        assert e.response["error"]
-        print("Error sending message to Slack: {}".format(e))
 
 
 def assign_EV(cttissue, assignto):
@@ -679,7 +666,8 @@ def transient_errors_check(node, date, updatedby):  # jon
                         node,
                         closemessage,
                     )
-                    send_slack(slack_bot_token, slack_channel, slack_message)
+                    slackclient = slack.Slack(config)
+                    slackclient.send_slack(slack_message)
 
                 log_history(cttissue, date, "ctt", "Closed issue %s" % (closemessage))
 
