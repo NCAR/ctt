@@ -20,7 +20,6 @@ def _authorized_team(user, authorized_teams):
             return t[0]
     return None
 
-
 def main():
     conf = config.get_config()
     logme = " ".join(sys.argv)
@@ -31,7 +30,7 @@ def main():
     if user is None:
         user = getpass.getuser()  # if not run via sudo
 
-    if user == "root" and os.getenv("CRONTAB") != "True":
+    if user == "root":
         print("You can't run ctt as root")
         sys.exit(1)
 

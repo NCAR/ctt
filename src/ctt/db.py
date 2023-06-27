@@ -1,168 +1,101 @@
-import sqlite3 as sql
+from typing import List
+from typing import Optional
+from sqlalchemy import ForeignKey
+from sqlalchemy import String
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import Mapped
+from sqlalchemy.orm import mapped_column
+from sqlalchemy.orm import relationship
+from sqlalchemy import func
 
+timestamp = Annotated[
+    datetime.datetime,
+    mapped_column(nullable=False, server_default=func.CURRENT_TIMESTAMP()),
+]
 
-class Issue:
-    def __init__(self, con, **kwargs):
-        self._con = con
+class Base(DeclarativeBase):
+    pass
 
-        self.cttissue = kwargs.get("cttissue")
-        self.date = kwargs.get("date")
-        self.severity = kwargs.get("severity")
-        self.ticket = kwargs.get("ticket")
-        self.status = kwargs.get("status")
-        self.hostname = kwargs.get("hostname")
-        self.title = kwargs.get("title")
-        self.description = kwargs.get("description")
-        self.assignedto = kwargs.get("assignedto")
-        self.originator = kwargs.get("originator")
-        self.updatedby = kwargs.get("updatedby")
-        self.type = kwargs.get("type")
-        self.state = kwargs.get("state")
-        self.updatedtime = kwargs.get("updatedtime")
-        self.viewtracker = kwargs.get("viewtracker")
-        self.xticket = kwargs.get("xticket")
+class Issue(Base):
+    #TODO use constants for mapped_column string length
+    __tablename__ = "issues"
 
-    def update(self, db):
-        """Update all changed fields for the issue in the db"""
-        if self.cttissue:
-            self._con.execute(
-                "UPDATE issues SET (date,severity,ticket,status,hostname,title,description,assignedto,originator,updatedby,type,state,updatedtime,viewtracker,xticket) = (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) WHERE rowid = ?",
-                (
-                    self.date,
-                    self.severity,
-                    self.ticket,
-                    self.status,
-                    self.hostname,
-                    self.title,
-                    self.description,
-                    self.assignedto,
-                    self.originator,
-                    self.updatedby,
-                    self.type,
-                    self.state,
-                    datetime.time.now(),
-                    self.viewtracker,
-                    self.xticket,
-                    self.cttissue,
-                ),
-            )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(30)) 
+    description: Mapped[str] = mapped_column(String(300))
+    host: Mapped[str] = mapped_column(String(30))
+    ticket: Mapped[Optional[str]]
+    status: Mapped[Status]
+    host_state: Mapped[State]
+    sibling_state: Mapped[Optional[State]]
+    severity: Mapped[int]
+    assigned_to: Mapped[Optional[str]] = mapped_column(String(30))
+    created_by: Mapped[str] = mapped_column(String(30))
+    created_at: Mapped[timestamp]
+    updated_at: Mapped[timestamp] = mapped_column(onupdate=datetime.datetime.now)
+    type: Mapped[TicketType]
 
-        else:
-            cur = self._con.execute(
-                "INSERT issues SET (date,severity,ticket,status,hostname,title,description,assignedto,originator,updatedby,type,state,updatedtime,viewtracker,xticket) = (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    self.date,
-                    self.severity,
-                    self.ticket,
-                    self.status,
-                    self.hostname,
-                    self.title,
-                    self.description,
-                    self.assignedto,
-                    self.originator,
-                    self.updatedby,
-                    self.type,
-                    self.state,
-                    datetime.time.now(),
-                    self.viewtracker,
-                    self.xticket,
-                ),
-            )
-            self.cttissue = cur.lastrowid
+    comments: Mapped[List["Comment"]] = relationship(back_populates("issues", cascade="all, delete-orphan"))
+
+    def __repr__(self) -> str:
+        return f"Issue(id={self.id}, title={self.title}, description={self.description}, host={self.host}, ticket={self.ticket}, status={self.status}, host_state={self.host_state}, sibling_state={self.sibling_state}, severity={self.severity}, assigned_to={self.assigned_to}, created_by={self.created_by}, created_at={self.created_at}, updated_at={self.updated_at}, type={self.type})"
+
+class Status(enum.Enum):
+    OPEN = "open"
+    CLOSED = "closed"
+
+class State(enum.Enum):
+    ONLINE = "online"
+    OFF = "off"
+    DRAINING = "draining"
+    DRAINED = "drained"
+
+class TicketType(enum.Enum):
+    SOFTWARE = "software"
+    HARDWARE = "hardware"
+
+class Comment(Base):
+    #TODO use constants for mapped_column string length
+    __tablename__ = "comments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    issue_id: Mapped[int] = mapped_column(ForeignKey("issues.id"))
+    created_at: Mapped[timestamp]
+    created_by: Mapped[str] = mapped_column(String(30))
+    comment: Mapped[str] = mapped_column(String(300))
+
+    issue: Mapped["Issue"] = relationship(back_populates("comments"))
+
+    def __repr__(self) -> str:
+        return f"Comment(id={self.id}, issue_id={self.issue_id}, created_at={self.created_at}, created_by={self.created_by}, comment={self.comment})"
 
 
 class DB:
-    # TODO make sure db handles races correctly
-    def __init__(self, config):
-        self._file = config.get("db", "file")
-        self._con = sql.connect(self._file)
-        self._setup_db()
+    def __init__(self, conf):
+        db = conf.get("db", "db")
+        db_type = conf.get("db", "type")
+        db_api = conf.get("db", "api")
+        self.engine = sqlalchemy.create_engine(f"{db_type}+{db_api}://{db}")
+        self.session = sqlalchemy.Session(self.engine)
 
     def __del__(self):
-        if self._con is not None:
-            # commit any open transactions then close connection
-            self._con.commit()
-            self._con.close()
+        if self.session is not None:
+            self.session.close()
+            self.session = None
 
-    def node_issue(self, node):
-        con = sql.connect(self.file)
-        with con:
-            cur = con.cursor()
-            cur.execute(
-                """SELECT ? FROM issues WHERE hostname = ? and stats = open""", (node)
-            )
-            issue = cur.fetchone()
-            if issue is not None:
-                return issue_from_row(issue)
-            else:
-                return None
+    def node_issues(self, node) -> (str):
+        result = self.session.scalars(sqlalchemy.select(Issue).where(Issue.host = node))
+        return result.all()
 
     def issue(self, cttissue):
-        con = sql.connect(self.file)
-        with con:
-            cur = con.cursor()
-            cur.execute("""SELECT ? FROM issues WHERE rowid = ?""", (field, cttissue))
-            issue = cur.fetchone()
-            if issue is not None:
-                return issue_from_row(issue)
-            else:
-                return None
+        result = self.session.scalar(sqlalchemy.select(Issue).where(Issue.id == cttissue))
+        return result.first()
 
     def new_issue(self, kwargs):
-        return Issue(self._con, kwargs)
-
-    def setup_db(self):
-        # sqlite tables automatically have a rowid primary key column
-        self._con.execute(
-            """CREATE TABLE IF NOT EXISTS issues(
-            date TEXT NOT NULL,
-            severity INT NOT NULL,
-            ticket TEXT,
-            status TEXT NOT NULL,
-            hostname TEXT NOT NULL,
-            issuetitle TEXT NOT NULL,
-            issuedescription TEXT NOT NULL,
-            assignedto TEXT,
-            issueoriginator TEXT NOT NULL,
-            updatedby TEXT NOT NULL,
-            issuetype TEXT NOT NULL,
-            state TEXT,
-            updatedtime TEXT,
-            viewtracker TEXT,
-            xticket TEXT)"""
-        )
-
-        self._con.execute(
-            """CREATE TABLE IF NOT EXISTS comments(
-            cttissue TEXT NOT NULL,
-            date TEXT NOT NULL,
-            updatedby TEXT NOT NULL,
-            comment TEXT NOT NULL)"""
-        )
-
-        self._con.execute(
-            """CREATE TABLE IF NOT EXISTS history(
-            cttissue TEXT NOT NULL,
-            date TEXT NOT NULL,
-            updatedby TEXT NOT NULL,
-            info TEXT)"""
-        )
-
-        self._con.execute(
-            """CREATE TABLE IF NOT EXISTS holdback(
-            hostname TEXT NOT NULL,
-            state TEXT NOT NULL)"""
-        )
-
-        self._con.execute(
-            """CREATE TABLE IF NOT EXISTS siblings(
-                cttissue TEXT NOT NULL,
-                date TEXT NOT NULL,
-                status TEXT NOT NULL,
-                parent TEXT NOT NULL,
-                sibling TEXT NOT NULL,
-		state TEXT)"""
-        )
+        newIssue = Issue(kwargs)
+        self.session.add(newIssue)
+        self.session.commit()
+        return newIssue
 
     def issue_siblings(self, cttissue):
         cur = self._con.execute(
