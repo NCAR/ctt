@@ -199,6 +199,7 @@ def issue_show(cluster, args, conf):
     for i in args.issues:
         issue = cluster.issue(i)
         print(issue)
+        print(issue.comments)
     pass
 def issue_stats(cluster, args, conf):
     pass

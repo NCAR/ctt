@@ -46,13 +46,14 @@ class Issue(Base):
         onupdate=datetime.datetime.now
     )
     type: orm.Mapped[IssueType]
+    enforce_down: orm.Mapped[bool] = orm.mapped_column(default=False)
 
     comments: orm.Mapped[List["Comment"]] = orm.relationship(
         back_populates="issue", cascade="all, delete-orphan", order_by='Comment.created_at'
     )
 
     def __repr__(self) -> str:
-        return f"Issue(id={self.id}, title={self.title}, description={self.description}, ticket={self.ticket}, status={self.status}, target={self.target}, down_siblings={self.down_siblings}, severity={self.severity}, assigned_to={self.assigned_to}, created_by={self.created_by}, created_at={self.created_at}, updated_at={self.updated_at})"
+        return f"Issue(id={self.id}, title={self.title}, description={self.description}, ticket={self.ticket}, status={self.status}, target={self.target}, down_siblings={self.down_siblings}, severity={self.severity}, assigned_to={self.assigned_to}, created_by={self.created_by}, created_at={self.created_at}, updated_at={self.updated_at}, type:{self.type}, enforce_down={self.enforce_down})"
 
 
 class Comment(Base):
