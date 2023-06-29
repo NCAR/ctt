@@ -1,21 +1,22 @@
 import ClusterShell
-from scheduler import PBS
 from ClusterShell import NodeSet
+from scheduler import PBS
+
 
 class Cluster:
     def __init__(self, conf):
         self.scheduler = PBS(conf)
 
-    def _siblings(self, node: str) -> list[str]:
+    def siblings(self, node: NodeSet) -> NodeSet:
         raise NotImplementedError
 
-    def bad_nodes(self, nodes: str) -> set((str, list[str])):
+    def bad_nodes(self, nodes: NodeSet) -> set((str, NodeSet)):
         """ checks if given nodes are bad
         input: nodeset string (ex: dec[0001-0123])
-        output: set(bad node reasons: str, nodeset with that reason: str)
+        output: set(bad node reasons: str, nodeset with that reason)
         """
         task = ClusterShell.Task.task_self()
-        task.run("[ -f /etc/THIS_IS_A_BAD_NODE.ncar ] && cat /etc/THIS_IS_A_BAD_NODE.ncar;' 2>/dev/null", nodes=nodeset, timeout=30)
+        task.run("[ -f /etc/THIS_IS_A_BAD_NODE.ncar ] && cat /etc/THIS_IS_A_BAD_NODE.ncar;' 2>/dev/null", nodes=nodes, timeout=30)
         bad_nodes = set()
         for buf, nodelist in task.iter_buffers():
             if buf:
@@ -27,6 +28,12 @@ class Cluster:
 
     def drain(self, nodes: NodeSet) -> None:
         self.scheduler.drain(nodes)
+
+    def logical_to_physical(self, nodes: NodeSet) -> NodeSet:
+        raise NotImplementedError
+
+    def physical_to_logical(self, nodes: NodeSet) -> NodeSet:
+        raise NotImplementedError
 
 
 

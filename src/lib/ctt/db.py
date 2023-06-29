@@ -22,24 +22,9 @@ class IssueStatus(enum.Enum):
     OPEN = "open"
     CLOSED = "closed"
 
-
-class NodeState(enum.Enum):
-    ONLINE = "online"
-    DRAINING = "draining"
-    DRAINED = "drained"
-
-
 class IssueType(enum.Enum):
     SOFTWARE = "software"
     HARDWARE = "hardware"
-
-
-issue_node_table = sqlalchemy.Table(
-    "issue_node_association_table",
-    Base.metadata,
-    sqlalchemy.Column("issue_id", sqlalchemy.ForeignKey("issues.id"), primary_key=True),
-    sqlalchemy.Column("node_id", sqlalchemy.ForeignKey("nodes.id"), primary_key=True),
-)
 
 
 class Issue(Base):
@@ -51,8 +36,8 @@ class Issue(Base):
     description: orm.Mapped[str] = orm.mapped_column(sqlalchemy.String(300))
     ticket: orm.Mapped[Optional[str]]
     status: orm.Mapped[IssueStatus]
-    node_state: orm.Mapped[NodeState]
-    sibling_state: orm.Mapped[Optional[NodeState]]
+    target: orm.Mapped[str]
+    down_siblings: orm.Mapped[bool]
     severity: orm.Mapped[int]
     assigned_to: orm.Mapped[Optional[str]] = orm.mapped_column(sqlalchemy.String(30))
     created_by: orm.Mapped[str] = orm.mapped_column(sqlalchemy.String(30))
@@ -65,7 +50,6 @@ class Issue(Base):
     comments: orm.Mapped[List["Comment"]] = orm.relationship(
         back_populates="issue", cascade="all, delete-orphan", order_by='Comment.created_at'
     )
-    nodes: orm.Mapped[List["Node"]] = orm.relationship(secondary=issue_node_table, back_populates="issues", order_by='Node.name')
 
     def __repr__(self) -> str:
         return f"Issue(id={self.id}, title={self.title}, description={self.description}, nodes={self.nodes}, ticket={self.ticket}, status={self.status}, node_state={self.node_state}, sibling_state={self.sibling_state}, severity={self.severity}, assigned_to={self.assigned_to}, created_by={self.created_by}, created_at={self.created_at}, updated_at={self.updated_at}, type={self.type})"
@@ -86,16 +70,6 @@ class Comment(Base):
     def __repr__(self) -> str:
         return f"Comment(id={self.id}, issue_id={self.issue_id}, created_at={self.created_at}, created_by={self.created_by}, comment={self.comment})"
 
-class Node(Base):
-    __tablename__ = "nodes"
-    id: orm.Mapped[int] = orm.mapped_column(primary_key=True)
-    name: orm.Mapped[str] = orm.mapped_column(sqlalchemy.String(30))
-
-    issues: orm.Mapped[List[Issue]] = orm.relationship(secondary=issue_node_table, back_populates="nodes")
-
-    def __repr__(self) -> str:
-        return f"Node(id={self.id}, name={self.name})"
-
 
 class DB:
     def __init__(self, conf):
@@ -115,17 +89,10 @@ class DB:
     def update(self):
         self.session.commit()
 
-    def node(self, node) -> Node:
-        result = self.session.scalars(
-            sqlalchemy.select(Node).where(node == Node.name)
-        )
-        return result.first()
-
     def issue(self, cttissue) -> Issue:
-        result = self.session.scalar(
+        return self.session.scalar(
             sqlalchemy.select(Issue).where(Issue.id == cttissue)
         )
-        return result.first()
 
     def new_issue(self, issue) -> int:
         self.session.add(issue)
@@ -134,8 +101,11 @@ class DB:
 
     def get_issues(self, **kwargs):
         statment = sqlalchemy.select(Issue)
-        if "state" in kwargs:
-            statment = statment.where(Issue.state == kwargs["state"])
+        if "status" in kwargs:
+            statment = statment.where(Issue.status == kwargs["status"])
+        if "target" in kwargs:
+            #TODO also get issues where a nodes IRU/chassis is the target
+            statment = statment.where(Issue.target == kwargs["target"])
         return self.session.scalars(statment).all()
 
 

@@ -6,6 +6,7 @@ import os
 import sys
 from syslog import syslog
 
+import ClusterShell
 import ctt
 
 
@@ -51,32 +52,31 @@ def main():
 
 
 def _issues(parser):
-    parser.add_argument("issue", type=int, nargs="+", help="ctt issue numbers")
+    parser.add_argument("issues", type=int, nargs="+", help="ctt issue numbers")
 
 
-def _issues_and_comment(parser):
-    _issues(parser)
+def issues_and_comment(parser):
     parser.add_argument("comment")
+    _issues(parser)
 
 
-def _ticket_args(parser, conf):
-    parser.add_argument("-T", "--xticket", help="Toggle an external (HPE,IBM) ticket")
+def issue_args(parser, conf):
     parser.add_argument("-a", "--assign", choices=("ssg", "casg"))
-    parser.add_argument("-c", "--cluster", default=conf.get("cluster", "name"))
-    parser.add_argument("-s", "--severity", choices=("1", "2", "3", "4"))
+    parser.add_argument("-s", "--severity", choices=(1, 2, 3, 4, 5), default=5)
     parser.add_argument(
         "-t", "--ticket", help="Attach an existing EV ticket to this issue"
     )
     parser.add_argument(
         "-x",
         "--type",
-        choices=("h", "h!", "s", "t", "u", "o"),
+        choices=("h", "s", "t", "u", "o"),
         help="Hardware, Software, Test, Unknown, Other",
     )
 
 
 def _cli(conf):
     parser = argparse.ArgumentParser()
+    """
     ev_enabled = "True" != conf.getboolean("ev", "enabled")
     parser.add_argument(
         "--noev",
@@ -84,9 +84,10 @@ def _cli(conf):
         help="Do not update EV ticket",
         default=(ev_enabled),
     )
+    """
     subparsers = parser.add_subparsers()
     # TODO improve reuse of subparser args since so many subcommands have similar arguments
-
+    """
     parser_release = subparsers.add_parser("release")
     parser_release.add_argument("issue", type=int, help="ctt issue number")
     parser_release.add_argument("node", nargs="+")
@@ -113,35 +114,22 @@ def _cli(conf):
     parser_stats.add_argument("-c", "--counts", action="store_true")
     parser_stats.set_defaults(func=issue_stats)
 
-    parser_listcmd = subparsers.add_parser("list")
-    parser_listcmd.add_argument(
-        "-s",
-        "--status",
-        choices=("open", "closed", "deleted", "all"),
-        default="open",
-    )
-    parser_listcmd.add_argument("--verbose", "-v", action="count", default=0)
-    parser_listcmd.set_defaults(func=issue_list)
 
     parser_evclose = subparsers.add_parser("evclose")
-    _issues_and_comment(parser_evclose)
+    issues_and_comment(parser_evclose)
     parser_evclose.set_defaults(func=ticket_close)
 
     parser_comment = subparsers.add_parser("comment")
-    _issues_and_comment(parser_comment)
+    issues_and_comment(parser_comment)
     parser_comment.set_defaults(func=issue_comment)
 
-    parser_close = subparsers.add_parser("close")
-    _issues_and_comment(parser_close)
-    parser_close.set_defaults(func=issue_close)
-
     parser_reopen = subparsers.add_parser("reopen")
-    _issues_and_comment(parser_reopen)
+    issues_and_comment(parser_reopen)
     parser_reopen.set_defaults(func=issue_open)
 
     parser_update = subparsers.add_parser("update")
     _issues(parser_update)
-    _ticket_args(parser_update, conf)
+    issue_args(parser_update, conf)
     parser_update.add_argument("-d", "--description")
     parser_update.add_argument("-i", "--issuetitle", dest="title")
     parser_update.add_argument(
@@ -151,16 +139,30 @@ def _cli(conf):
         help="Warning: Changing the node name will NOT drain a node nor resume the old node name",
     )
     parser_update.set_defaults(func=issue_update)
+    """
+    parser_listcmd = subparsers.add_parser("list")
+    parser_listcmd.add_argument(
+        "-s",
+        "--status",
+        choices=['all'] + [x.value for x in ctt.IssueStatus],
+        default=ctt.IssueStatus("open"),
+    )
+    parser_listcmd.set_defaults(func=issue_list)
+
+    parser_close = subparsers.add_parser("close")
+    issues_and_comment(parser_close)
+    parser_close.set_defaults(func=issue_close)
+
 
     parser_opencmd = subparsers.add_parser("open")
     parser_opencmd.add_argument("title")
     parser_opencmd.add_argument("description")
     parser_opencmd.add_argument(
-        "nodes",
+        "targets",
         nargs="+",
         help="Warning: Changing the node name will NOT drain a node nor resume the old node name",
     )
-    _ticket_args(parser_opencmd, conf)
+    issue_args(parser_opencmd, conf)
     parser_opencmd.set_defaults(func=issue_open)
 
     return parser
@@ -172,17 +174,29 @@ def issue_update(cluster, args, conf):
     pass
 
 def issue_open(cluster, args, conf):
-    issue = ctt.Issue(title=args.title, description=args.description, ticket=args.ticket, severity=args.severity, created_by=args.user, type=ctt.IssueType.SOFTWARE, nodes=args.nodes)
-    cttissue = cluster.open(issue)
-    print(f"Issue oppened with id: {cttissue}")
+    for targets in args.targets:
+        targetset = ClusterShell.NodeSet.NodeSet(targets)
+        for n in targetset:
+            issue = ctt.Issue(title=args.title, description=args.description, ticket=args.ticket, severity=args.severity, created_by=args.user, type=ctt.IssueType.SOFTWARE, target=n)
+            cttissue = cluster.open(issue)
+            print(f"Issue opened for {n} with id: {cttissue}")
 
 def issue_close(cluster, args, conf):
-    pass
+    for cttissue in args.issues:
+       issue = cluster.issue(cttissue)
+       cluster.close(issue, args.comment)
+       print(f"Issue {cttissue} closed for node {issue.target}")
+
+def issue_list(cluster, args, conf):
+    print("id\tTitle\tTarget")
+    if args.status != "all":
+        issues = cluster.issue_list(status=ctt.IssueStatus(args.status))
+    else:
+        issues = cluster.issue_list()
+    for issue in issues:
+        print(f"{issue.id}\t{issue.title}\t{issue.target}\t{issue.status.value}")
 def issue_attach(cluster, args, conf):
     pass
-def issue_list(cluster, args, conf):
-    for issue in cluster.issue_list():
-        print(issue)
 def issue_show(cluster, args, conf):
     pass
 def issue_stats(cluster, args, conf):

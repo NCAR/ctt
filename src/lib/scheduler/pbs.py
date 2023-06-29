@@ -1,7 +1,5 @@
 import os
 
-import ClusterShell
-
 #TODO switch to using CluserShell module
 #TODO check if pbs can batch resume/drain nodes instead of doing 1 at a time
 
@@ -22,7 +20,7 @@ class PBS:
                     ).read()
                 except:
                     print("Can not process pbs_resume() on %s" % (node))
-    
+
                 try:
                     os.popen(
                         "{0} -t30 -w {1} '[ -f /etc/nolocal ] && /usr/bin/unlink /etc/nolocal ; [ -f /etc/THIS_IS_A_BAD_NODE.ncar ] && /usr/bin/unlink /etc/THIS_IS_A_BAD_NODE.ncar;' 2>/dev/null".format(
@@ -34,8 +32,8 @@ class PBS:
                         "Can not unlink /etc/nolocal or /etc/THIS_IS_A_BAD_NODE.ncar on %s"
                         % (node)
                     )
-    
-    
+
+
     def drain(self, nodes2drain):
         for node in nodes2drain:
             try:

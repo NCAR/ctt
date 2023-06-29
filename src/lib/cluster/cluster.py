@@ -1,6 +1,7 @@
 from .casper import Casper
 from .shasta import Derecho, Gust
 
+
 def get_cluster(conf):
     """Takes a system full or short name and returns an object representing that system"""
     name = conf["name"].lower()

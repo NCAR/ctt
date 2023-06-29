@@ -1,18 +1,13 @@
 #!usr/bin/env python3
-import datetime
-import ntpath
-import os
-import shutil
-import sys
-from configparser import ConfigParser
 import logging
+from configparser import ConfigParser
 
-import extraview
-import slack
 import cluster
+import extraview
 from ClusterShell.NodeSet import NodeSet
 
 import ctt.db
+
 
 class CTTException(Exception):
     pass
@@ -47,49 +42,6 @@ class CTT:
         self.db = ctt.db.DB(conf['db'])
         self.ev = extraview.Extraview(conf['ev'])
         self.cluster = cluster.get_cluster(conf["cluster"])
-        self.default_sev = conf['ctt']['default_sev']
-        self.default_assignee = conf['ctt']['default_assignee']
-
-    def drain_blades(self, nodes: NodeSet):
-        """
-        starts draining a set of blades
-        input: a clush nodeset str, will drain all nodes and their siblings
-        """
-        logging.debug(f'Draining blades: {nodes}')
-        nodeset = NodeSet(nodes)
-        for node in nodes:
-            nodeset.update(self.cluster.siblings(node))
-        self.cluster.drain(nodeset)
-
-    def drain_nodes(self, nodes: NodeSet):
-        """
-        starts draining a set of nodes, DOES NOT drain entire blades, use drain_blades for that
-        input: a clush nodeset str of nodes to be drained
-        """
-        logging.debug(f'Draining nodes: {nodes}')
-        self.cluster.drain(nodes)
-
-    def release_siblings(self, cttissue: int):
-        """
-        nodes who can be released if they have no open issues, along with their siblings
-        input: a clush nodeset str of nodes that should be checked for release
-        """
-        logging.debug(f'Releasing siblings for issue: {cttissue}')
-        to_release = NodeSet()
-        issue = self.db.issue(cttissue)
-        if issue is None:
-            raise IssueNotFoundException
-        for node in issue.nodes:
-            if node.sibling_state == "online":
-                # can't relase nodes that are already online
-                continue
-            for sib in self.cluster.siblings(node.name):
-                sib_node = self.db.node(sib)
-                if sib_node is None or sib_node.issues is None:
-                    to_release.update(sib)
-            node.sibling_state = "online"
-        self.cluster.resume(to_release)
-        self.db.update()
 
     def ticket_close(self, cttissue: int, comment: str):
         logging.debug(f'closing ticket for {cttissue}')
@@ -115,7 +67,7 @@ class CTT:
                 "HELP_LOCATION": self.ev.get_field_value_to_field_key("HELP_LOCATION", "NWSC"),
                 "HELP_HOSTNAME": self.ev.get_field_value_to_field_key(
                     "HELP_HOSTNAME", ""),
-                "HELP_HOSTNAME_CATEGORY": ev.get_field_value_to_field_key(
+                "HELP_HOSTNAME_CATEGORY": self.ev.get_field_value_to_field_key(
                     "HELP_HOSTNAME_CATEGORY", "Supercomputer"
                 ),
                 "HELP_HOSTNAME_OTHER": issue.cluster,
@@ -127,37 +79,49 @@ class CTT:
 
         return issue.ticket
 
-    def issue_list(self, **kwargs):
+    def issue_list(self, **kwargs) -> [ctt.db.Issue]:
         """
         list all issues that fit the given state
         """
         logging.debug('listing issues')
         return self.db.get_issues(**kwargs)
 
-    def issue_show(self, cttissue: int):
+    def issue(self, cttissue: int) -> ctt.db.Issue:
         logging.debug(f'showing issue details for: {cttissue}')
         return self.db.issue(cttissue)
 
     def open(self, issue: ctt.db.Issue) -> int:
         """Open an issue and return its issue number"""
-        nodeset = NodeSet()
-        for n in issue.nodes:
-            nodeset.update(n.name)
-        self.drain_nodes(issue.nodes)
-        issue.node_state = ctt.db.NodeState.DRAINING
-        if not issue.severity:
-            issue.severity = self.default_sev
-        if not issue.assigned_to:
-            issue.assigned_to = self.default_assignee
+        self.cluster.drain(NodeSet(issue.target))
+        issue.down_siblings = False
         issue.status = ctt.db.IssueStatus.OPEN
         return self.db.new_issue(issue)
 
+    def close(self, issue: ctt.db.Issue, comment: str) -> None:
+        if issue.status == ctt.db.IssueStatus.CLOSED:
+            logging.warning(f"Issue {issue.id} already closed, skipping")
+            return
+        issue.status = ctt.db.IssueStatus.CLOSED
+        to_resume = NodeSet()
+        if issue.down_siblings:
+            issue.down_siblings = False
+            for n in self.cluster.siblings(issue.target):
+                if self.db.get_issues(target=n, state="open") is None:
+                    to_resume.update(n)
+            if self.db.get_issues(target=issue.target, state="open") is None:
+                to_resume.update(issue.target)
+        self.cluster.resume(to_resume)
+        self.db.update()
 
+
+
+
+'''
 def issue_open(args):
     logging.debug('opening issue')
     db = ctt.db.DB(conf)
 
-    issue = db.new_issue(
+    db.new_issue(
         datetime.datetime.now().isoformat(),
         args.severity,
         args.ticket,
@@ -422,3 +386,4 @@ def _create_attachment(cttissue, filepath, attach_location, date, updatedby, db)
         print("File attached to %s" % (cttissue))
     else:
         print("Error: File not attached, unknown error")
+'''
