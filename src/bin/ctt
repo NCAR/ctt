@@ -1,27 +1,26 @@
 #!/usr/bin/env python3
 import argparse
-import datetime
+import getpass
 import grp
-import ntpath
 import os
 import sys
 from syslog import syslog
 
-import config
-import cttlib
-import slack
 import ctt
 
 
-def _authorized_team(user, authorized_teams):
+def _authorized_user(user, authorized_teams):
     for team in authorized_teams:
-        t = grp.getgrnam(team)
-        if user in t[3]:
-            return t[0]
+        try:
+            t = grp.getgrnam(team)
+            if user in t[3]:
+                return t[0]
+        except KeyError:
+            pass
     return None
 
 def main():
-    conf = config.get_config()
+    conf = ctt.get_config()
     logme = " ".join(sys.argv)
     syslog(logme)
 
@@ -38,21 +37,25 @@ def main():
         print("Current user is not authorized to run ctt")
         sys.exit(1)
 
-    parser = cli(conf)
+    parser = _cli(conf)
     args = parser.parse_args()
+    args.user = user
+
+    cluster = ctt.CTT(conf)
 
     # when no subcommand given func isn't set
     if "func" not in vars(args):
         parser.print_help()
     else:
-        args.func(args, conf)
+        args.func(cluster, args, conf)
+
 
 def _issues(parser):
     parser.add_argument("issue", type=int, nargs="+", help="ctt issue numbers")
 
 
 def _issues_and_comment(parser):
-    issues(parser)
+    _issues(parser)
     parser.add_argument("comment")
 
 
@@ -71,6 +74,7 @@ def _ticket_args(parser, conf):
         help="Hardware, Software, Test, Unknown, Other",
     )
 
+
 def _cli(conf):
     parser = argparse.ArgumentParser()
     ev_enabled = "True" != conf.getboolean("ev", "enabled")
@@ -86,33 +90,28 @@ def _cli(conf):
     parser_release = subparsers.add_parser("release")
     parser_release.add_argument("issue", type=int, help="ctt issue number")
     parser_release.add_argument("node", nargs="+")
-    parser_release.set_defaults(func=ctt.release)
-
-    parser_holdback = subparsers.add_parser("holdback")
-    parser_holdback.add_argument("node")
-    parser_holdback.add_argument("state", choices=("add", "remove"))
-    parser_holdback.set_defaults(func=ctt.holdback)
+    parser_release.set_defaults(func=issue_release_sibs)
 
     parser_evopen = subparsers.add_parser("evopen")
-    issues(parser_evopen)
-    parser_evopen.set_defaults(func=ctt.evopen)
+    _issues(parser_evopen)
+    parser_evopen.set_defaults(func=ticket_open)
 
     parser_attach = subparsers.add_parser("attach")
-    issues(parser_attach)
+    _issues(parser_attach)
     parser_attach.add_argument("filepath")
-    parser_attach.set_defaults(func=ctt.attach)
+    parser_attach.set_defaults(func=issue_attach)
 
     parser_show = subparsers.add_parser("show")
-    issues(parser_show)
+    _issues(parser_show)
     parser_show.add_argument(
         "-d", action="store_true", help="Show detail/history of ticket"
     )
-    parser_show.set_defaults(func=show)
+    parser_show.set_defaults(func=issue_show)
 
     parser_stats = subparsers.add_parser("stats")
     parser_stats.add_argument("-n", "--node")
     parser_stats.add_argument("-c", "--counts", action="store_true")
-    parser_stats.set_defaults(func=ctt.stats)
+    parser_stats.set_defaults(func=issue_stats)
 
     parser_listcmd = subparsers.add_parser("list")
     parser_listcmd.add_argument(
@@ -122,27 +121,27 @@ def _cli(conf):
         default="open",
     )
     parser_listcmd.add_argument("--verbose", "-v", action="count", default=0)
-    parser_listcmd.set_defaults(func=ctt.listcmd)
+    parser_listcmd.set_defaults(func=issue_list)
 
     parser_evclose = subparsers.add_parser("evclose")
-    issues_and_comment(parser_evclose)
-    parser_evclose.set_defaults(func=ctt.evclose)
+    _issues_and_comment(parser_evclose)
+    parser_evclose.set_defaults(func=ticket_close)
 
     parser_comment = subparsers.add_parser("comment")
-    issues_and_comment(parser_comment)
-    parser_comment.set_defaults(func=ctt.comment)
+    _issues_and_comment(parser_comment)
+    parser_comment.set_defaults(func=issue_comment)
 
     parser_close = subparsers.add_parser("close")
-    issues_and_comment(parser_close)
-    parser_close.set_defaults(func=ctt.close)
+    _issues_and_comment(parser_close)
+    parser_close.set_defaults(func=issue_close)
 
     parser_reopen = subparsers.add_parser("reopen")
-    issues_and_comment(parser_reopen)
-    parser_reopen.set_defaults(func=ctt.reopen)
+    _issues_and_comment(parser_reopen)
+    parser_reopen.set_defaults(func=issue_open)
 
     parser_update = subparsers.add_parser("update")
-    issues(parser_update)
-    ticket_args(parser_update, conf)
+    _issues(parser_update)
+    _ticket_args(parser_update, conf)
     parser_update.add_argument("-d", "--description")
     parser_update.add_argument("-i", "--issuetitle", dest="title")
     parser_update.add_argument(
@@ -151,20 +150,50 @@ def _cli(conf):
         nargs="+",
         help="Warning: Changing the node name will NOT drain a node nor resume the old node name",
     )
-    parser_update.set_defaults(func=ctt.update)
+    parser_update.set_defaults(func=issue_update)
 
     parser_opencmd = subparsers.add_parser("open")
     parser_opencmd.add_argument("title")
     parser_opencmd.add_argument("description")
     parser_opencmd.add_argument(
-        "node",
+        "nodes",
         nargs="+",
         help="Warning: Changing the node name will NOT drain a node nor resume the old node name",
     )
-    ticket_args(parser_opencmd, conf)
-    parser_opencmd.set_defaults(func=ctt.opencmd)
+    _ticket_args(parser_opencmd, conf)
+    parser_opencmd.set_defaults(func=issue_open)
 
     return parser
+
+def issue_release_sibs(cluster, args, conf):
+    pass
+
+def issue_update(cluster, args, conf):
+    pass
+
+def issue_open(cluster, args, conf):
+    issue = ctt.Issue(title=args.title, description=args.description, ticket=args.ticket, severity=args.severity, created_by=args.user, type=ctt.IssueType.SOFTWARE, nodes=args.nodes)
+    cttissue = cluster.open(issue)
+    print(f"Issue oppened with id: {cttissue}")
+
+def issue_close(cluster, args, conf):
+    pass
+def issue_attach(cluster, args, conf):
+    pass
+def issue_list(cluster, args, conf):
+    for issue in cluster.issue_list():
+        print(issue)
+def issue_show(cluster, args, conf):
+    pass
+def issue_stats(cluster, args, conf):
+    pass
+def issue_comment(cluster, args, conf):
+    pass
+def ticket_close(cluster, args, conf):
+    pass
+def ticket_open(cluster, args, conf):
+    pass
+
 
 if "__main__" == __name__:
     main()

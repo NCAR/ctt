@@ -28,3 +28,5 @@ ignore = ["E501", "E722"]
 select = ["E", "F", "I", "W"]
 # TODO add "N" and "PL"
 
+[pytest]
+pythonpath = "src/lib"

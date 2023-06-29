@@ -4,14 +4,12 @@ import xml.etree.ElementTree
 import requests
 
 
-class Client:
-    def __init__(self, config):
-        self.enabled = config.getboolean("ev", "enabled")
-        if self.enabled:
-            self.user = config.get("ev", "user")
-            self.password = config.get("ev", "password")
-            self.url = config.get("ev", "url")
-            self.fields_cache = {}
+class Extraview:
+    def __init__(self, conf):
+        self.user = conf["user"]
+        self.password = conf["password"]
+        self.url = conf["url"]
+        self.fields_cache = {}
 
     def http_get(self, params):
         """Perform a get request against extraview

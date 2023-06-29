@@ -1,102 +1,146 @@
-from typing import List
-from typing import Optional
-from sqlalchemy import ForeignKey
-from sqlalchemy import String
-from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.orm import Mapped
-from sqlalchemy.orm import mapped_column
-from sqlalchemy.orm import relationship
-from sqlalchemy import func
+import datetime
+import enum
+import typing
+from typing import List, Optional
 
-timestamp = Annotated[
+import sqlalchemy
+import sqlalchemy.orm as orm
+
+timestamp = typing.Annotated[
     datetime.datetime,
-    mapped_column(nullable=False, server_default=func.CURRENT_TIMESTAMP()),
+    orm.mapped_column(
+        nullable=False, server_default=sqlalchemy.func.CURRENT_TIMESTAMP()
+    ),
 ]
 
-class Base(DeclarativeBase):
+
+class Base(orm.DeclarativeBase):
     pass
 
-class Issue(Base):
-    #TODO use constants for mapped_column string length
-    __tablename__ = "issues"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    title: Mapped[str] = mapped_column(String(30)) 
-    description: Mapped[str] = mapped_column(String(300))
-    host: Mapped[str] = mapped_column(String(30))
-    ticket: Mapped[Optional[str]]
-    status: Mapped[Status]
-    host_state: Mapped[State]
-    sibling_state: Mapped[Optional[State]]
-    severity: Mapped[int]
-    assigned_to: Mapped[Optional[str]] = mapped_column(String(30))
-    created_by: Mapped[str] = mapped_column(String(30))
-    created_at: Mapped[timestamp]
-    updated_at: Mapped[timestamp] = mapped_column(onupdate=datetime.datetime.now)
-    type: Mapped[TicketType]
-
-    comments: Mapped[List["Comment"]] = relationship(back_populates("issues", cascade="all, delete-orphan"))
-
-    def __repr__(self) -> str:
-        return f"Issue(id={self.id}, title={self.title}, description={self.description}, host={self.host}, ticket={self.ticket}, status={self.status}, host_state={self.host_state}, sibling_state={self.sibling_state}, severity={self.severity}, assigned_to={self.assigned_to}, created_by={self.created_by}, created_at={self.created_at}, updated_at={self.updated_at}, type={self.type})"
-
-class Status(enum.Enum):
+class IssueStatus(enum.Enum):
     OPEN = "open"
     CLOSED = "closed"
 
-class State(enum.Enum):
+
+class NodeState(enum.Enum):
     ONLINE = "online"
-    OFF = "off"
     DRAINING = "draining"
     DRAINED = "drained"
 
-class TicketType(enum.Enum):
+
+class IssueType(enum.Enum):
     SOFTWARE = "software"
     HARDWARE = "hardware"
 
+
+issue_node_table = sqlalchemy.Table(
+    "issue_node_association_table",
+    Base.metadata,
+    sqlalchemy.Column("issue_id", sqlalchemy.ForeignKey("issues.id"), primary_key=True),
+    sqlalchemy.Column("node_id", sqlalchemy.ForeignKey("nodes.id"), primary_key=True),
+)
+
+
+class Issue(Base):
+    # TODO use constants for orm.mapped_column string length
+    __tablename__ = "issues"
+
+    id: orm.Mapped[int] = orm.mapped_column(primary_key=True)
+    title: orm.Mapped[str] = orm.mapped_column(sqlalchemy.String(30))
+    description: orm.Mapped[str] = orm.mapped_column(sqlalchemy.String(300))
+    ticket: orm.Mapped[Optional[str]]
+    status: orm.Mapped[IssueStatus]
+    node_state: orm.Mapped[NodeState]
+    sibling_state: orm.Mapped[Optional[NodeState]]
+    severity: orm.Mapped[int]
+    assigned_to: orm.Mapped[Optional[str]] = orm.mapped_column(sqlalchemy.String(30))
+    created_by: orm.Mapped[str] = orm.mapped_column(sqlalchemy.String(30))
+    created_at: orm.Mapped[timestamp]
+    updated_at: orm.Mapped[timestamp] = orm.mapped_column(
+        onupdate=datetime.datetime.now
+    )
+    type: orm.Mapped[IssueType]
+
+    comments: orm.Mapped[List["Comment"]] = orm.relationship(
+        back_populates="issue", cascade="all, delete-orphan", order_by='Comment.created_at'
+    )
+    nodes: orm.Mapped[List["Node"]] = orm.relationship(secondary=issue_node_table, back_populates="issues", order_by='Node.name')
+
+    def __repr__(self) -> str:
+        return f"Issue(id={self.id}, title={self.title}, description={self.description}, nodes={self.nodes}, ticket={self.ticket}, status={self.status}, node_state={self.node_state}, sibling_state={self.sibling_state}, severity={self.severity}, assigned_to={self.assigned_to}, created_by={self.created_by}, created_at={self.created_at}, updated_at={self.updated_at}, type={self.type})"
+
+
 class Comment(Base):
-    #TODO use constants for mapped_column string length
+    # TODO use constants for orm.mapped_column string length
     __tablename__ = "comments"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    issue_id: Mapped[int] = mapped_column(ForeignKey("issues.id"))
-    created_at: Mapped[timestamp]
-    created_by: Mapped[str] = mapped_column(String(30))
-    comment: Mapped[str] = mapped_column(String(300))
+    id: orm.Mapped[int] = orm.mapped_column(primary_key=True)
+    issue_id: orm.Mapped[int] = orm.mapped_column(sqlalchemy.ForeignKey("issues.id"))
+    created_at: orm.Mapped[timestamp]
+    created_by: orm.Mapped[str] = orm.mapped_column(sqlalchemy.String(30))
+    comment: orm.Mapped[str] = orm.mapped_column(sqlalchemy.String(300))
 
-    issue: Mapped["Issue"] = relationship(back_populates("comments"))
+    issue: orm.Mapped["Issue"] = orm.relationship(back_populates="comments")
 
     def __repr__(self) -> str:
         return f"Comment(id={self.id}, issue_id={self.issue_id}, created_at={self.created_at}, created_by={self.created_by}, comment={self.comment})"
 
+class Node(Base):
+    __tablename__ = "nodes"
+    id: orm.Mapped[int] = orm.mapped_column(primary_key=True)
+    name: orm.Mapped[str] = orm.mapped_column(sqlalchemy.String(30))
+
+    issues: orm.Mapped[List[Issue]] = orm.relationship(secondary=issue_node_table, back_populates="nodes")
+
+    def __repr__(self) -> str:
+        return f"Node(id={self.id}, name={self.name})"
+
 
 class DB:
     def __init__(self, conf):
-        db = conf.get("db", "db")
-        db_type = conf.get("db", "type")
-        db_api = conf.get("db", "api")
-        self.engine = sqlalchemy.create_engine(f"{db_type}+{db_api}://{db}")
-        self.session = sqlalchemy.Session(self.engine)
+        db = conf['db']
+        db_type = conf["type"]
+        url = f'{db_type}:///{db}'
+        # add echo=True to create_enginge to see raw sql in stdout
+        self.engine = sqlalchemy.create_engine(url)
+        self.session = orm.Session(self.engine)
+        Base.metadata.create_all(self.engine)
 
     def __del__(self):
         if self.session is not None:
             self.session.close()
             self.session = None
 
-    def node_issues(self, node) -> (str):
-        result = self.session.scalars(sqlalchemy.select(Issue).where(Issue.host = node))
-        return result.all()
+    def update(self):
+        self.session.commit()
 
-    def issue(self, cttissue):
-        result = self.session.scalar(sqlalchemy.select(Issue).where(Issue.id == cttissue))
+    def node(self, node) -> Node:
+        result = self.session.scalars(
+            sqlalchemy.select(Node).where(node == Node.name)
+        )
         return result.first()
 
-    def new_issue(self, kwargs):
-        newIssue = Issue(kwargs)
-        self.session.add(newIssue)
-        self.session.commit()
-        return newIssue
+    def issue(self, cttissue) -> Issue:
+        result = self.session.scalar(
+            sqlalchemy.select(Issue).where(Issue.id == cttissue)
+        )
+        return result.first()
 
+    def new_issue(self, issue) -> int:
+        self.session.add(issue)
+        self.session.commit()
+        return issue.id
+
+    def get_issues(self, **kwargs):
+        statment = sqlalchemy.select(Issue)
+        if "state" in kwargs:
+            statment = statment.where(Issue.state == kwargs["state"])
+        return self.session.scalars(statment).all()
+
+
+
+'''
     def issue_siblings(self, cttissue):
         cur = self._con.execute(
             """SELECT sibling, FROM siblings WHERE cttissue = ? AND status = open""",
@@ -143,7 +187,7 @@ class DB:
         con = sql.connect(self.file)
         with con:
             cur = con.execute(
-                """SELECT rowid FROM issues WHERE hostname = ? and status = 'open' LIMIT 1""",
+                """SELECT rowid FROM issues WHERE nodename = ? and status = 'open' LIMIT 1""",
                 (node),
             )
             issue = cur.fetchone()
@@ -170,8 +214,8 @@ class DB:
                 (ticketvalue, cttissue),
             )
 
-    def get_hostname(self, cttissue):
-        return self.issue_field(cttissue, "hostname")
+    def get_nodename(self, cttissue):
+        return self.issue_field(cttissue, "nodename")
 
     def get_status(self, cttissue):
         return self.issue_field(cttissue, "status")
@@ -252,7 +296,7 @@ class DB:
         with con:
             if "remove" in state:
                 con.execute(
-                    """UPDATE holdback SET state = ? WHERE hostname = ? and state = ?""",
+                    """UPDATE holdback SET state = ? WHERE nodename = ? and state = ?""",
                     (
                         "False",
                         node,
@@ -262,7 +306,7 @@ class DB:
             if "add" in state:
                 con.execute(
                     """INSERT INTO holdback(
-                         hostname,state)
+                         nodename,state)
                          VALUES(?, ?)""",
                     (node, "True"),
                 )
@@ -299,27 +343,7 @@ class DB:
                 (userlist, cttissue),
             )
 
-    def issue_from_row(self, row):
-        args = {}
-        args["cttissue"] = row[1]
-        args["date"] = row[2][0:16]
-        args["severity"] = row[3]
-        args["ticket"] = row[4]
-        args["status"] = row[5]
-        args["hostname"] = row[6]
-        args["title"] = row[7]
-        args["description"] = row[8]
-        args["assignedto"] = row[9]
-        args["originator"] = row[10]
-        args["updatedby"] = row[11]
-        args["issuetype"] = row[12]
-        args["state"] = row[13]
-        args["updatedtime"] = row[14][0:16]
-        args["viewtracker"] = row[15]
-        args["xticket"] = row[16]
-        return Issue(args)
-
-    def get_comments(cttissue):  # used for --show option (displays the comments)
+    def get_comments(self, cttissue):  # used for --show option (displays the comments)
         if self.issue(cttissue):
             comments = []
             cur = self.con.execute(
@@ -332,7 +356,7 @@ class DB:
                 comments.append((updatedby, date, comment))
             return comments
 
-    def comment_issue(cttissue, date, updatedby, newcomment):
+    def comment_issue(self, cttissue, date, updatedby, newcomment):
         if self.issue(cttissue):
             con.execute(
                 """INSERT INTO comments(
@@ -343,7 +367,7 @@ class DB:
         else:
             print("Can't add comment to %s. Issue not found or deleted" % (cttissue))
 
-    def get_issues(statustype):
+    def get_issues(self, statustype):
         if "all" == statustype:
             cur = self._con.execute("""SELECT * FROM issues ORDER BY rowid ASC""")
         else:
@@ -355,3 +379,4 @@ class DB:
         for row in cur:
             issues.append(self.issue_from_row(row))
         return issues
+'''
