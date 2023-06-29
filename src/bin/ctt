@@ -102,12 +102,6 @@ def _cli(conf):
     parser_attach.add_argument("filepath")
     parser_attach.set_defaults(func=issue_attach)
 
-    parser_show = subparsers.add_parser("show")
-    _issues(parser_show)
-    parser_show.add_argument(
-        "-d", action="store_true", help="Show detail/history of ticket"
-    )
-    parser_show.set_defaults(func=issue_show)
 
     parser_stats = subparsers.add_parser("stats")
     parser_stats.add_argument("-n", "--node")
@@ -140,6 +134,10 @@ def _cli(conf):
     )
     parser_update.set_defaults(func=issue_update)
     """
+    parser_show = subparsers.add_parser("show")
+    _issues(parser_show)
+    parser_show.set_defaults(func=issue_show)
+
     parser_listcmd = subparsers.add_parser("list")
     parser_listcmd.add_argument(
         "-s",
@@ -198,6 +196,9 @@ def issue_list(cluster, args, conf):
 def issue_attach(cluster, args, conf):
     pass
 def issue_show(cluster, args, conf):
+    for i in args.issues:
+        issue = cluster.issue(i)
+        print(issue)
     pass
 def issue_stats(cluster, args, conf):
     pass

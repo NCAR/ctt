@@ -52,7 +52,7 @@ class Issue(Base):
     )
 
     def __repr__(self) -> str:
-        return f"Issue(id={self.id}, title={self.title}, description={self.description}, nodes={self.nodes}, ticket={self.ticket}, status={self.status}, node_state={self.node_state}, sibling_state={self.sibling_state}, severity={self.severity}, assigned_to={self.assigned_to}, created_by={self.created_by}, created_at={self.created_at}, updated_at={self.updated_at}, type={self.type})"
+        return f"Issue(id={self.id}, title={self.title}, description={self.description}, ticket={self.ticket}, status={self.status}, target={self.target}, down_siblings={self.down_siblings}, severity={self.severity}, assigned_to={self.assigned_to}, created_by={self.created_by}, created_at={self.created_at}, updated_at={self.updated_at})"
 
 
 class Comment(Base):
