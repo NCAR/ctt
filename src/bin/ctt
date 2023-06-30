@@ -4,7 +4,6 @@ import getpass
 import grp
 import os
 import sys
-from syslog import syslog
 
 import ClusterShell
 import ctt
@@ -84,53 +83,6 @@ def _cli(conf):
     """
     subparsers = parser.add_subparsers()
     # TODO improve reuse of subparser args since so many subcommands have similar arguments
-    """
-    parser_release = subparsers.add_parser("release")
-    parser_release.add_argument("issue", type=int, help="ctt issue number")
-    parser_release.add_argument("node", nargs="+")
-    parser_release.set_defaults(func=issue_release_sibs)
-
-    parser_evopen = subparsers.add_parser("evopen")
-    _issues(parser_evopen)
-    parser_evopen.set_defaults(func=ticket_open)
-
-    parser_attach = subparsers.add_parser("attach")
-    _issues(parser_attach)
-    parser_attach.add_argument("filepath")
-    parser_attach.set_defaults(func=issue_attach)
-
-
-    parser_stats = subparsers.add_parser("stats")
-    parser_stats.add_argument("-n", "--node")
-    parser_stats.add_argument("-c", "--counts", action="store_true")
-    parser_stats.set_defaults(func=issue_stats)
-
-
-    parser_evclose = subparsers.add_parser("evclose")
-    issues_and_comment(parser_evclose)
-    parser_evclose.set_defaults(func=ticket_close)
-
-    parser_comment = subparsers.add_parser("comment")
-    issues_and_comment(parser_comment)
-    parser_comment.set_defaults(func=issue_comment)
-
-    parser_reopen = subparsers.add_parser("reopen")
-    issues_and_comment(parser_reopen)
-    parser_reopen.set_defaults(func=issue_open)
-
-    parser_update = subparsers.add_parser("update")
-    _issues(parser_update)
-    issue_args(parser_update, conf)
-    parser_update.add_argument("-d", "--description")
-    parser_update.add_argument("-i", "--issuetitle", dest="title")
-    parser_update.add_argument(
-        "-n",
-        "--node",
-        nargs="+",
-        help="Warning: Changing the node name will NOT drain a node nor resume the old node name",
-    )
-    parser_update.set_defaults(func=issue_update)
-    """
     parser_show = subparsers.add_parser("show")
     _issues(parser_show)
     parser_show.set_defaults(func=issue_show)
@@ -148,7 +100,6 @@ def _cli(conf):
     issues_and_comment(parser_close)
     parser_close.set_defaults(func=issue_close)
 
-
     parser_opencmd = subparsers.add_parser("open")
     parser_opencmd.add_argument("title")
     parser_opencmd.add_argument("description")
@@ -160,13 +111,17 @@ def _cli(conf):
     issue_args(parser_opencmd, conf)
     parser_opencmd.set_defaults(func=issue_open)
 
+    # release siblings
+    parser_release = subparsers.add_parser("release")
+    issues_and_comment(parser_release)
+    parser_release.set_defaults(func=release)
+
+    parser_drain = subparsers.add_parser("drain")
+    _issues(parser_drain)
+    parser_drain.set_defaults(func=drain)
+
+
     return parser
-
-def issue_release_sibs(cluster, args, conf):
-    pass
-
-def issue_update(cluster, args, conf):
-    pass
 
 def issue_open(cluster, args, conf):
     for targets in args.targets:
@@ -179,8 +134,9 @@ def issue_open(cluster, args, conf):
 def issue_close(cluster, args, conf):
     for cttissue in args.issues:
        issue = cluster.issue(cttissue)
-       cluster.close(issue, args.user, args.comment)
+       resumed = cluster.close(issue, args.user, args.comment)
        print(f"Issue {cttissue} closed for node {issue.target}")
+       print(f"resuming nodes {resumed}")
 
 def issue_list(cluster, args, conf):
     print("id\tTarget\tStatus\tTitle")
@@ -190,22 +146,30 @@ def issue_list(cluster, args, conf):
         issues = cluster.issue_list()
     for issue in issues:
         print(f"{issue.id}\t{issue.title}\t{issue.target}\t{issue.status.value}")
+
 def issue_show(cluster, args, conf):
     for i in args.issues:
         issue = cluster.issue(i)
         print(issue)
         for c in issue.comments:
             print(f"{c.comment} - {c.created_by} {c.created_at}")
-def issue_attach(cluster, args, conf):
-    pass
-def issue_stats(cluster, args, conf):
-    pass
-def issue_comment(cluster, args, conf):
-    pass
+
+def drain(cluster, args, conf):
+    for issue in args.issues:
+        draining = cluster.prep_for_work(issue, args.user)
+        print(f'draining nodes: {draining}')
+
+def release(cluster, args, conf):
+    for issue in args.issues:
+        resumed = cluster.end_work(issue, args.comment, args.user)
+        print(f'resumed nodes: {resumed}')
+
 def ticket_close(cluster, args, conf):
-    pass
+    for issue in args.issues:
+        cluster.ticket_close(args.issue, args.comment)
 def ticket_open(cluster, args, conf):
-    pass
+    for issue in args.issues:
+        cluster.ticket_open(args.issue)
 
 
 if "__main__" == __name__:

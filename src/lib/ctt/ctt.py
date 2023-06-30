@@ -46,8 +46,10 @@ class CTT:
         issue.ticket = None
         self.db.update()
 
-    def ticket_open(self, cttissue: int, sticketing: int, nodes: str, title: str, description: str):
+    def ticket_open(self, cttissue: int):
         # TODO document magic strings
+        # TODO does it make sense to be able to open 1 ticket for multiple ctt issues
+        # ex: lots of targets have the same issue, so open 1 ticket to track them all?
         logging.debug(f'opening ticket for {cttissue}')
         if not self.ticketing_enabled:
             logging.debug('ticketing not enabled, nothing to do')
@@ -56,9 +58,9 @@ class CTT:
         if issue is None:
             raise IssueNotFoundException
         if issue.ticket is not None:
-            self.ticketing.update(issue.ticket, {sticketing, nodes, title, description})
+            self.ticketing.update(issue.ticket, {issue.target, issue.title, issue.description})
         else:
-            ticket_id = self.ticketing.create("ssgticketing", "ssg", None, "CTT Issue: {}: {}: {}".format(self.cluster.name().capitalize(), nodes, title), "CTT issue: {}, Sticketing: {}, Hosts: {}, Title: {}, Description: {}".format(cttissue, sticketing, nodes, title, description), {
+            ticket_id = self.ticketing.create("ssgticketing", "ssg", None, "CTT Issue: {}: {}: {}".format(self.cluster.name().capitalize(), issue.target, issue.title), "CTT issue: {}, Hosts: {}, Title: {}, Description: {}".format(cttissue, issue.target, issue.title, issue.description), {
                 "HELP_LOCATION": self.ticketing.get_field_value_to_field_key("HELP_LOCATION", "NWSC"),
                 "HELP_HOSTNAME": self.ticketing.get_field_value_to_field_key(
                     "HELP_HOSTNAME", ""),
@@ -87,7 +89,6 @@ class CTT:
 
     def open(self, issue: ctt.db.Issue) -> int:
         """Open an issue and return its issue number"""
-        # TODO check if issue is a duplicate
         if self.cluster_enabled:
             self.cluster.drain(NodeSet(issue.target))
         oldissue = self.db.get_issues(title=issue.title, target=issue.target)
@@ -101,30 +102,55 @@ class CTT:
                 #TODO update any fields that are different between old issue and the new one
                 pass
             self.db.update()
+            return oldissue.id
         else:
             issue.down_siblings = False
             issue.status = ctt.db.IssueStatus.OPEN
             issue.comments.append(ctt.db.Comment(created_by=issue.created_by, comment="opening issue"))
             return self.db.new_issue(issue)
 
-    def close(self, issue: ctt.db.Issue, operator: str, comment: str) -> None:
+    def prep_for_work(self, cttissue: int, operator: str) -> NodeSet:
+        # TODO return nodes that were drained
+        # TODO add option to schedule for work later, instead of ASAP
+        issue = self.issue(cttissue)
+        issue.down_siblings = True
+        issue.comments.append(ctt.db.Comment(created_by=operator, comment="draining siblings for work"))
+        self.db.update()
+        to_drain = self.cluster.siblings(NodeSet(issue.target))
+        self.cluster.drain(self.cluster.siblings(NodeSet(issue.target)))
+        return to_drain
+
+
+    def end_work(self, cttissue: int, operator: str) -> NodeSet:
+        return self._resume_sibs(self.db.issue(cttissue), operator)
+
+    def close(self, issue: ctt.db.Issue, operator: str, comment: str) -> NodeSet:
         if issue.status == ctt.db.IssueStatus.CLOSED:
             logging.warning(f"Issue {issue.id} already closed, skipping")
             return
         issue.comments.append(ctt.db.Comment(created_by=operator, comment=comment))
         issue.comments.append(ctt.db.Comment(created_by=operator, comment="closing issue"))
         issue.status = ctt.db.IssueStatus.CLOSED
+        self.db.update()
+        resumed = self._resume_sibs(issue, operator)
+        return resumed
+
+    def _resume_sibs(self, issue: ctt.db.Issue, comment: str, operator: str) -> NodeSet:
         to_resume = NodeSet()
+        to_check = NodeSet(issue.target)
+        issue.comments.append(ctt.db.Comment(created_by=operator, comment=comment))
         if issue.down_siblings:
             issue.down_siblings = False
-            for n in self.cluster.siblings(issue.target):
-                if self.db.get_issues(target=n, state="open") is None:
-                    to_resume.update(n)
-            if self.db.get_issues(target=issue.target, state="open") is None:
-                to_resume.update(issue.target)
+            to_check.update(self.cluster.siblings(NodeSet(issue.target)))
+            issue.comments.append(ctt.db.Comment(created_by=operator, comment="releasing siblings"))
+        self.db.update()
+        for n in to_check:
+            if not self.db.get_issues(target=n, status=ctt.db.IssueStatus.OPEN):
+                to_resume.update(n)
         if self.cluster_enabled:
             self.cluster.resume(to_resume)
-        self.db.update()
+        return to_resume
+
 
 
 

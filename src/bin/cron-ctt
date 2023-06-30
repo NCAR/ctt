@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-import os
-import re
-import ctt
 import cluster
+import ctt
+
 
 def main():
     conf = ctt.get_config()

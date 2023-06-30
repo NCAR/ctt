@@ -9,7 +9,7 @@ class PBS:
         self.pbsadmin = conf['pbsadmin']
         self.pbsnodes = conf['pbsnodes']
 
-    def resume(self, nodes2resume):
+    def resume(self, nodes2resume) -> None:
         for node in nodes2resume:
             if node != "FATAL":
                 try:
