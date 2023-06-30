@@ -15,6 +15,7 @@ def _authorized_user(user, authorized_teams):
             t = grp.getgrnam(team)
             if user in t[3]:
                 return t[0]
+        # if the group doesn't exist don't crash
         except KeyError:
             pass
     return None
