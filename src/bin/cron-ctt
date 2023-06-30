@@ -2,239 +2,32 @@
 import os
 import re
 import ctt
+import cluster
 
-
-def main(date, severity, assignedto, updatedby, cluster, UserGroup):
+def main():
     conf = ctt.get_config()
-    try:
-        pbs_states_csv = os.popen(
-            "{0} -t30 -Nw {1} {2} -av -Fdsv -D,".format(
-                conf.get("cluster","clush"), conf.get("cluster", "pbadmin"), conf.get("cluster", "pbsnodes")
-            )
-        ).readlines()
-    except:
-        print("Can not process --auto")
-        details = "Can not get pbsnodes from %s" % (self.pbsadmin)
-        cttissue = new_issue(
-            date,
-            "1",
-            "---",
-            "open",
-            cluster,
-            "FATAL",
-            "Can not get pbsnodes",
-            details,
-            "FATAL",
-            "FATAL",
-            "FATAL",
-            "other",
-            "FATAL",
-            date,
-            UserGroup,
-            "---",
-        )
-        log_history(cttissue, date, "ctt", "new issue")
-        exit(1)
+    ctt_client = ctt.CTT(conf)
+    system = cluster.get_cluster(conf["cluster"])
+    good_nodes = system.all_nodes()
 
-    newissuedict = {}
-    if int(maxissuesopen) != int(0):
-        open_count = self.db.open_count()
-        if open_count >= int(maxissuesopen):
-            if not self.db.maxissueopen():
-                print(
-                    "Maximum number of issues (%s) reached for --auto" % (maxissuesopen)
-                )
-                print("Can not process --auto")
-                details = "To gather nodes and failures, increase maxissuesopen"
-                cttissue = new_issue(
-                    date,
-                    "1",
-                    "---",
-                    "open",
-                    cluster,
-                    "FATAL",
-                    "MAX OPEN REACHED",
-                    details,
-                    "FATAL",
-                    "FATAL",
-                    "FATAL",
-                    "other",
-                    "FATAL",
-                    date,
-                    UserGroup,
-                    "---",
-                )
-                log_history(cttissue, date, updatedby, "new issue")
-            exit(1)
+    bad_nodes = system.bad_nodes(good_nodes)
 
-    for line in pbs_states_csv:
-        splitline = line.split(",")
-        node = splitline[0]
-        x, node = node.split("=")
-        state = splitline[5]
-        x, state = state.split("=")
-        # known pbs states: 'free', 'job-busy', 'job-exclusive',
-        #'resv-exclusive', offline, down, provisioning, wait-provisioning, stale, state-unknown
+    # open tickets for bad
+    for reason, nodes in bad_nodes:
+        good_nodes.difference_update(nodes)
+        for node in nodes:
+            issue = ctt.Issue(title=reason, target=str(node), created_by="ctt", severity=conf["ctt"]["default_sev"])
+            ctt_client.open(issue)
 
-        if strict_node_match_auto != "False":
-            if node not in strict_node_match_auto:
-                continue
-
-        self.db.siblings_update_state(node, state)
-
-        _transient_errors_check(node, date, updatedby)
-
-        if (
-            node_open_check(node) is True
-        ):  # update node state if open issue on node and state changed
-            issue = check_node_state(node, state)
-            if issue is not None and issue.state == state:  # no change in state
-                cttissue = issue.cttissue
-                update_issue(cttissue, "state", state)
-                update_issue(cttissue, "updatedby", "ctt")
-                update_issue(cttissue, "updatedtime", issue.date)
-                log_history(
-                    cttissue,
-                    issue.date,
-                    "ctt",
-                    "%s state changed to %s" % (node, state),
-                )
-
-        elif state in ("state-unknown", "offline", "down"):  # if no issue on node
-            if "comment=" in "".join(splitline):
-                for item in splitline:
-                    if "comment=" in item:
-                        x, comment = item.split("=")
-                        if (
-                            comment and node_open_check(node) is False
-                        ):  # Prevents duplicate issues on node
-                            hostname = node
-                            newissuedict[hostname] = comment
-
+    # close tickets for nodes that aren't bad anymore, or enforce the nodes being down
+    for issue in ctt_client.issue_list(status=ctt.IssueStatus.OPEN):
+        if issue.target in good_nodes:
+            if issue.enforce_down:
+                #FIXME need to commit db transaction or won't stick
+                issue.comment.append("target is up, turning back off")
+                system.drain(issue.target)
             else:
-                comment = "Unknown Reason"
-                hostname = node
-                newissuedict[hostname] = comment
-
-    if len(newissuedict) != 0 and len(newissuedict) <= int(maxissuesrun):
-        status = "open"
-        ticket = "---"
-        updatedby = "ctt"
-        issuetype = "u"
-        issueoriginator = "ctt"
-        updatedtime = date
-        updatedtime = updatedtime[:-10]
-        assignedto = "ctt"
-        state = "unknown"
-        xticket = "---"
-        for hostname, comment in newissuedict.items():
-            issuetitle = get_THIS_IS_A_BAD_NODE(hostname)
-            if issuetitle is not False:
-                issuedescription = issuetitle
-                if comment:
-                    issuedescription = issuedescription + ", PBS comment=%s" % (comment)
-            else:
-                issuetitle = issuedescription = comment
-
-            cttissue = new_issue(
-                date,
-                severity,
-                ticket,
-                status,
-                cluster,
-                hostname,
-                issuetitle,
-                issuedescription,
-                assignedto,
-                issueoriginator,
-                updatedby,
-                issuetype,
-                state,
-                updatedtime,
-                UserGroup,
-                xticket,
-            )
-            log_history(cttissue, date, "ctt", "new issue")
-
-    elif len(newissuedict) >= int(maxissuesrun):
-        print("Maximum number of issues reached for --auto")
-        print("Can not process --auto")
-        details = (
-            "This run of ctt discovered more issues than maxissuesrun. \
-                   Discovered: %s; maxissuesrun: %s\n\n %s"
-            % (len(newissuedict), maxissuesrun, newissuedict)
-        )
-        cttissue = new_issue(
-            date,
-            "1",
-            "---",
-            "open",
-            cluster,
-            "FATAL",
-            "MAX RUN REACHED: %s/%s" % (len(newissuedict), maxissuesrun),
-            details,
-            "FATAL",
-            "FATAL",
-            "FATAL",
-            "other",
-            "FATAL",
-            date,
-            UserGroup,
-            "---",
-        )
-        log_history(cttissue, date, "ctt", "new issue")
-        exit(1)
-
-    # Force Offline
-    if pbs_enforcement == "True":
-        for line in pbs_states_csv:
-            splitline = line.split(",")
-            node = splitline[0]
-            x, node = node.split("=")
-            state = splitline[5]
-            x, state = state.split("=")
-
-            if self.db.is_open_sibling(node):
-                if not re.search("offline", splitline[5]) and not re.search(
-                    "offline", splitline[6]
-                ):
-                    sibcttissue = self.db.sibcttissue(node)
-                    if sibcttissue:
-                        nodes2drain = node.split(",")
-                        pbs_drain(sibcttissue, date, "ctt", nodes2drain)
-                        self.db.siblings_update_state(node, "offline")
-                        log_history(sibcttissue, date, "ctt", "Auto forced pbs offline")
-
-            if self.db.is_primary(node):
-                if not re.search("offline", splitline[5]) and not re.search(
-                    "offline", splitline[6]
-                ):
-                    cttissue = self.db.cttissue(node)
-                    if cttissue:
-                        nodes2drain = node.split(",")
-                        pbs_drain(cttissue, date, "ctt", nodes2drain)
-                        update_issue(cttissue, "state", "offline")
-                        log_history(cttissue, date, "ctt", "Auto forced pbs offline")
-
-
-def _transient_errors_check(node, date, updatedby):  # jon
-    if self.db.is_primary(node) and transient_errors_enabled == "True":
-        cttissue = self.db.cttissue(node)
-        issue = self.db.issue(cttissue)
-        transient_errors_list = transient_errors.split(", ")
-        for item in transient_errors_list:
-            if item in issue.title:
-                close_issue(cttissue, date, updatedby)
-                closemessage = "Transient error: %s" % (item)
-                if slack_enabled == "True":
-                    self.slack.send_slack(
-                        "Issue %s for %s: %s closed by ctt\n%s"
-                        % (cttissue, cluster, node, closemessage)
-                    )
-                self.log_history(
-                    cttissue, date, "ctt", "Closed issue %s" % (closemessage)
-                )
-
+                ctt.close(issue, "ctt", "target is up, assuming issue is resolved")
 
 if __name__ == "__main__":
     main()

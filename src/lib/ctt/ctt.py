@@ -18,19 +18,6 @@ class IssueNotFoundException(CTTException):
 class TicketNotFoundException(CTTException):
     pass
 
-
-class _bcolors:
-    HEADER = "\033[95m"
-    OKBLUE = "\033[94m"
-    OKCYAN = "\033[96m"
-    OKGREEN = "\033[92m"
-    WARNING = "\033[93m"
-    FAIL = "\033[91m"
-    ENDC = "\033[0m"
-    BOLD = "\033[1m"
-    UNDERLINE = "\033[4m"
-
-
 def get_config(configFile="conf/ctt.ini", secretsFile="conf/secrets.ini"):
     parser = ConfigParser()
     parser.read(configFile)
@@ -40,34 +27,42 @@ def get_config(configFile="conf/ctt.ini", secretsFile="conf/secrets.ini"):
 class CTT:
     def __init__(self, conf):
         self.db = ctt.db.DB(conf['db'])
-        self.ev = extraview.Extraview(conf['ev'])
+        self.ticketing = extraview.Extraview(conf['ticketing'])
+        self.ticketing_enabled = conf['ticketing']['enabled'] == 'True'
         self.cluster = cluster.get_cluster(conf["cluster"])
+        self.cluster_enabled = conf['cluster']['enabled'] == 'True'
 
-    def ticket_close(self, cttissue: int, comment: str):
+    def ticket_close(self, cttissue: int, comment: str) -> None:
         logging.debug(f'closing ticket for {cttissue}')
+        if not self.ticketing_enabled:
+            logging.debug('ticketing not enabled, nothing to do')
+            return
         issue = self.db.issue(cttissue)
         if issue is None:
             raise IssueNotFoundException
         if issue.ticket is None:
             raise TicketNotFoundException
-        self.ev.close(issue.ticket, comment)
+        self.ticketing.close(issue.ticket, comment)
         issue.ticket = None
         self.db.update()
 
-    def ticket_open(self, cttissue: int, sev: int, nodes: str, title: str, description: str):
+    def ticket_open(self, cttissue: int, sticketing: int, nodes: str, title: str, description: str):
         # TODO document magic strings
         logging.debug(f'opening ticket for {cttissue}')
+        if not self.ticketing_enabled:
+            logging.debug('ticketing not enabled, nothing to do')
+            return None
         issue = self.db.issue(cttissue)
         if issue is None:
             raise IssueNotFoundException
         if issue.ticket is not None:
-            self.ev.update(issue.ticket, {sev, nodes, title, description})
+            self.ticketing.update(issue.ticket, {sticketing, nodes, title, description})
         else:
-            ticket_id = self.ev.create("ssgev", "ssg", None, "CTT Issue: {}: {}: {}".format(self.cluster.name().capitalize(), nodes, title), "CTT issue: {}, Sev: {}, Hosts: {}, Title: {}, Description: {}".format(cttissue, sev, nodes, title, description), {
-                "HELP_LOCATION": self.ev.get_field_value_to_field_key("HELP_LOCATION", "NWSC"),
-                "HELP_HOSTNAME": self.ev.get_field_value_to_field_key(
+            ticket_id = self.ticketing.create("ssgticketing", "ssg", None, "CTT Issue: {}: {}: {}".format(self.cluster.name().capitalize(), nodes, title), "CTT issue: {}, Sticketing: {}, Hosts: {}, Title: {}, Description: {}".format(cttissue, sticketing, nodes, title, description), {
+                "HELP_LOCATION": self.ticketing.get_field_value_to_field_key("HELP_LOCATION", "NWSC"),
+                "HELP_HOSTNAME": self.ticketing.get_field_value_to_field_key(
                     "HELP_HOSTNAME", ""),
-                "HELP_HOSTNAME_CATEGORY": self.ev.get_field_value_to_field_key(
+                "HELP_HOSTNAME_CATEGORY": self.ticketing.get_field_value_to_field_key(
                     "HELP_HOSTNAME_CATEGORY", "Supercomputer"
                 ),
                 "HELP_HOSTNAME_OTHER": issue.cluster,
@@ -92,15 +87,32 @@ class CTT:
 
     def open(self, issue: ctt.db.Issue) -> int:
         """Open an issue and return its issue number"""
-        self.cluster.drain(NodeSet(issue.target))
-        issue.down_siblings = False
-        issue.status = ctt.db.IssueStatus.OPEN
-        return self.db.new_issue(issue)
+        # TODO check if issue is a duplicate
+        if self.cluster_enabled:
+            self.cluster.drain(NodeSet(issue.target))
+        oldissue = self.db.get_issues(title=issue.title, target=issue.target)
+        if oldissue and len(oldissue) != 0:
+            oldissue = oldissue[0]
+            if oldissue.status != ctt.db.IssueStatus.OPEN:
+                oldissue.status = ctt.db.IssueStatus.OPEN
+                oldissue.down_siblings = False
+                oldissue.comments.append(ctt.db.Comment(created_by=issue.created_by, comment="reopening issue"))
+            else:
+                #TODO update any fields that are different between old issue and the new one
+                pass
+            self.db.update()
+        else:
+            issue.down_siblings = False
+            issue.status = ctt.db.IssueStatus.OPEN
+            issue.comments.append(ctt.db.Comment(created_by=issue.created_by, comment="opening issue"))
+            return self.db.new_issue(issue)
 
-    def close(self, issue: ctt.db.Issue, comment: str) -> None:
+    def close(self, issue: ctt.db.Issue, operator: str, comment: str) -> None:
         if issue.status == ctt.db.IssueStatus.CLOSED:
             logging.warning(f"Issue {issue.id} already closed, skipping")
             return
+        issue.comments.append(ctt.db.Comment(created_by=operator, comment=comment))
+        issue.comments.append(ctt.db.Comment(created_by=operator, comment="closing issue"))
         issue.status = ctt.db.IssueStatus.CLOSED
         to_resume = NodeSet()
         if issue.down_siblings:
@@ -110,7 +122,8 @@ class CTT:
                     to_resume.update(n)
             if self.db.get_issues(target=issue.target, state="open") is None:
                 to_resume.update(issue.target)
-        self.cluster.resume(to_resume)
+        if self.cluster_enabled:
+            self.cluster.resume(to_resume)
         self.db.update()
 
 
@@ -123,7 +136,7 @@ def issue_open(args):
 
     db.new_issue(
         datetime.datetime.now().isoformat(),
-        args.severity,
+        args.sticketingerity,
         args.ticket,
         "open",
         args.cluster,
@@ -141,8 +154,8 @@ def issue_open(args):
         args.xticket,
     )
 
-    if args.type == "h" and not args.noev:
-        evopen(args)
+    if args.type == "h" and not args.noticketing:
+        ticketingopen(args)
 
 
 def issue_update(args, conf):
@@ -156,25 +169,25 @@ def issue_update(args, conf):
         if args.type:
             issue.type = args.type
             if (
-                "h" in args.type and not args.noev
+                "h" in args.type and not args.noticketing
             ):  # move this statement up under if for h!
                 if issue.ticket is not None:
-                    ev_id = _open_ev(issue, conf.get("cluster", "name"))
-                    issue.ticket = ev_id
+                    ticketing_id = _open_ticketing(issue, conf.get("cluster", "name"))
+                    issue.ticket = ticketing_id
         if args.title:
             issue.title = args.title
         if args.description:
             issue.description = args.description
-        if args.severity:
-            issue.severity = args.severity
+        if args.sticketingerity:
+            issue.sticketingerity = args.sticketingerity
         if args.node:
             issue.hostname = args.node
         if args.assign:
             issue.assignedto = args.assign
 
-            if not args.noev:
+            if not args.noticketing:
                 if issue.ticket is not None:
-                    _assign_ev(issue, issue.assignedto)
+                    _assign_ticketing(issue, issue.assignedto)
                     db.log_history(
                         cttissue,
                         datetime.datetime.now().isoformat(),
@@ -198,13 +211,13 @@ def comment(args, conf):
             args.user,
             args.comment,
         )
-        if not args.noev:
+        if not args.noticketing:
             issue = db.issue(cttissue)
             if issue is not None and issue.ticket is not None:
-                ev.add_resolver_comment(
+                ticketing.add_resolver_comment(
                     issue.ticket, "CTT Comment:\n%s" % (args.comment)
                 )
-                print("ev %s updated with '%s'" % (issue.ticket, args.comment))
+                print("ticketing %s updated with '%s'" % (issue.ticket, args.comment))
 
 
 def issue_close(args, conf):
@@ -237,7 +250,7 @@ def issue_close(args, conf):
             print("pbs_enforcement is False. Not resuming nodes")
         issue.update()
 
-        evclose(args)
+        ticketingclose(args)
 
         if args.slack is True:
             slack_message = "Issue %s for %s: %s closed by %s\n%s" % (
@@ -280,10 +293,10 @@ def reopen(args, conf):
                 issue.host,
             )
 
-        if not args.noev:
+        if not args.noticketing:
             if issue.ticket is not None:
-                ev.open(issue.ticket, "CTT Comment:\n%s" % (issue.comment))
-                print("ev %s reopened" % (issue.ticket))
+                ticketing.open(issue.ticket, "CTT Comment:\n%s" % (issue.comment))
+                print("ticketing %s reopened" % (issue.ticket))
         else:
             print("extraview_enabled is False. Can't close EV")
 
@@ -312,9 +325,9 @@ def attach(args, conf):
             ),
         )
 
-def _assign_ev(issue, assignto):
-    """assign ev to group"""
-    ev.assign_group(
+def _assign_ticketing(issue, assignto):
+    """assign ticketing to group"""
+    ticketing.assign_group(
         issue.ticket,
         assignto,
         None,
@@ -328,36 +341,36 @@ def _assign_ev(issue, assignto):
     )
 
 
-def _open_ev(issue, cluster):
-    """open ev ticket"""
+def _open_ticketing(issue, cluster):
+    """open ticketing ticket"""
     issue_data_formatted = (
-        "CTT issue: %s\nCTT Severity: %s\nHostname: %s\nIssue Title: %s\nIssue Description: %s"
+        "CTT issue: %s\nCTT Sticketingerity: %s\nHostname: %s\nIssue Title: %s\nIssue Description: %s"
         % (
             issue.cttissue,
-            issue.severity,
+            issue.sticketingerity,
             issue.hostname,
             issue.title,
             issue.description,
         )
     )
-    ev_id = ev.create(
-        "ssgev",
+    ticketing_id = ticketing.create(
+        "ssgticketing",
         "ssg",
         None,
         "CTT Issue: %s: %s: %s " % (cluster.capitalize(), issue.hostname, issue.title),
         "%s" % (issue_data_formatted),
         {
-            "HELP_LOCATION": ev.get_field_value_to_field_key("HELP_LOCATION", "NWSC"),
-            "HELP_HOSTNAME": ev.get_field_value_to_field_key(
+            "HELP_LOCATION": ticketing.get_field_value_to_field_key("HELP_LOCATION", "NWSC"),
+            "HELP_HOSTNAME": ticketing.get_field_value_to_field_key(
                 "HELP_HOSTNAME", issue.ticket.capitalize()
             ),
-            "HELP_HOSTNAME_CATEGORY": ev.get_field_value_to_field_key(
+            "HELP_HOSTNAME_CATEGORY": ticketing.get_field_value_to_field_key(
                 "HELP_HOSTNAME_CATEGORY", "Supercomputer"
             ),
             "HELP_HOSTNAME_OTHER": issue.cluster,
         },
     )
-    return ev_id
+    return ticketing_id
 
 
 def _create_attachment(cttissue, filepath, attach_location, date, updatedby, db):

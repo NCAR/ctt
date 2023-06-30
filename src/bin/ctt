@@ -22,9 +22,6 @@ def _authorized_user(user, authorized_teams):
 
 def main():
     conf = ctt.get_config()
-    logme = " ".join(sys.argv)
-    syslog(logme)
-
     user = os.environ.get("SUDO_USER")
 
     if user is None:
@@ -175,31 +172,31 @@ def issue_open(cluster, args, conf):
     for targets in args.targets:
         targetset = ClusterShell.NodeSet.NodeSet(targets)
         for n in targetset:
-            issue = ctt.Issue(title=args.title, description=args.description, ticket=args.ticket, severity=args.severity, created_by=args.user, type=ctt.IssueType.SOFTWARE, target=n)
+            issue = ctt.Issue(title=args.title, description=args.description, ticket=args.ticket, severity=args.severity, created_by=args.user, target=n)
             cttissue = cluster.open(issue)
             print(f"Issue opened for {n} with id: {cttissue}")
 
 def issue_close(cluster, args, conf):
     for cttissue in args.issues:
        issue = cluster.issue(cttissue)
-       cluster.close(issue, args.comment)
+       cluster.close(issue, args.user, args.comment)
        print(f"Issue {cttissue} closed for node {issue.target}")
 
 def issue_list(cluster, args, conf):
-    print("id\tTitle\tTarget")
+    print("id\tTarget\tStatus\tTitle")
     if args.status != "all":
         issues = cluster.issue_list(status=ctt.IssueStatus(args.status))
     else:
         issues = cluster.issue_list()
     for issue in issues:
         print(f"{issue.id}\t{issue.title}\t{issue.target}\t{issue.status.value}")
-def issue_attach(cluster, args, conf):
-    pass
 def issue_show(cluster, args, conf):
     for i in args.issues:
         issue = cluster.issue(i)
         print(issue)
-        print(issue.comments)
+        for c in issue.comments:
+            print(f"{c.comment} - {c.created_by} {c.created_at}")
+def issue_attach(cluster, args, conf):
     pass
 def issue_stats(cluster, args, conf):
     pass

@@ -33,7 +33,7 @@ class Issue(Base):
 
     id: orm.Mapped[int] = orm.mapped_column(primary_key=True)
     title: orm.Mapped[str] = orm.mapped_column(sqlalchemy.String(30))
-    description: orm.Mapped[str] = orm.mapped_column(sqlalchemy.String(300))
+    description: orm.Mapped[Optional[str]] = orm.mapped_column(sqlalchemy.String(300))
     ticket: orm.Mapped[Optional[str]]
     status: orm.Mapped[IssueStatus]
     target: orm.Mapped[str]
@@ -45,7 +45,7 @@ class Issue(Base):
     updated_at: orm.Mapped[timestamp] = orm.mapped_column(
         onupdate=datetime.datetime.now
     )
-    type: orm.Mapped[IssueType]
+    type: orm.Mapped[Optional[IssueType]]
     enforce_down: orm.Mapped[bool] = orm.mapped_column(default=False)
 
     comments: orm.Mapped[List["Comment"]] = orm.relationship(

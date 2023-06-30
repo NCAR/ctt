@@ -1,4 +1,5 @@
 from .base import Cluster
+from ClusterShell.NodeSet import NodeSet
 
 
 # siblings are different for different node types
@@ -9,7 +10,8 @@ class Shasta(Cluster):
         raise NotImplementedError
 
 class Gust(Shasta):
-    pass
+    def all_nodes(self):
+        return NodeSet('gu[0001-0010]')
 
 class Derecho(Shasta):
     pass
