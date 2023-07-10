@@ -2,9 +2,7 @@
 CTT is a tool for managing tickets for a HPC system
 
 ## Requirements:
-- pbs pro
-- sqlite3
-- clustershell
+- pbs
 - python 3.6+
 
 ## Setup
@@ -13,11 +11,12 @@ CTT is a tool for managing tickets for a HPC system
   - `slack_token`
   - `ev_user`
   - `ev_password`
+- create and source a python venv
+  - pip install -r requirements.txx
+- add src/lib to PYTHONPATH
 
 ## dev
 - before commiting run 
-  - `black *.py`
-  - `isort *`
   - `ruff check . --fix` and fix any errors
   - tests are still a WIP, but after they are setup make sure they all pass
 
