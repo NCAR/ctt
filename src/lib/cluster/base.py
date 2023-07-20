@@ -22,10 +22,10 @@ class Cluster:
         bad_nodes = []
         task.run(f"{self.pbsnodes} -l", nodes=self.pbsadmin, timeout=30)
         for buf, nodelist in task.iter_buffers():
-            for l in buf.message().decode("utf-8").split('\n'):
-                n = l.split()
+            for line in buf.message().decode("utf-8").split('\n'):
+                n = line.split()
                 node = n[0]
-                state = n[1]
+                n[1]
                 title = ' '.join(n[2:])
                 #TODO FIXME aggregate issues witht he same issue, or change this silly api
                 bad_nodes.append((title, NodeSet.fromlist([node])))

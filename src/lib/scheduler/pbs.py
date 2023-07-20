@@ -1,6 +1,6 @@
-import os
-import ClusterShell
 import logging
+
+import ClusterShell
 
 #TODO switch to using CluserShell module
 #TODO check if pbs can batch resume/drain nodes instead of doing 1 at a time
