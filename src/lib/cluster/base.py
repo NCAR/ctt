@@ -14,6 +14,7 @@ class Cluster:
         raise NotImplementedError
 
     def bad_nodes(self, nodes: NodeSet) -> list((str, NodeSet)):
+        #TODO FIXME doesn't need to take in a list of nodes
         """ checks if given nodes are bad
         input: nodeset string (ex: dec[0001-0123])
         output: set(bad node reasons: str, nodeset with that reason)

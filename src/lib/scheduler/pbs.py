@@ -7,7 +7,6 @@ import ClusterShell
 
 class PBS:
     def __init__(self, conf):
-        self.clush_path = conf['clush']
         self.pbsadmin = conf['pbsadmin']
         self.pbsnodes = conf['pbsnodes']
 

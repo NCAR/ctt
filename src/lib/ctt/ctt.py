@@ -54,16 +54,17 @@ class CTT:
                 oldissue.status = ctt.db.IssueStatus.OPEN
                 oldissue.down_siblings = False
                 oldissue.comments.append(ctt.db.Comment(created_by=issue.created_by, comment="reopening issue"))
+                self.db.update()
+                return oldissue.id
             else:
                 #TODO update any fields that are different between old issue and the new one
-                pass
-            self.db.update()
-            return oldissue.id
+                return None
         else:
             issue.down_siblings = False
             issue.status = ctt.db.IssueStatus.OPEN
             issue.comments.append(ctt.db.Comment(created_by=issue.created_by, comment="opening issue"))
-            return self.db.new_issue(issue)
+            issueid =  self.db.new_issue(issue)
+            return issueid
 
     def prep_for_work(self, cttissue: int, operator: str) -> NodeSet:
         # TODO return nodes that were drained
