@@ -31,7 +31,7 @@ def main():
         print("You can't run ctt as root")
         sys.exit(1)
 
-    if not _authorized_user(getpass.getuser(), conf.get("users", "teams").split(" ")):
+    if not _authorized_user(user, conf.get("users", "teams").split(" ")):
         print("Current user is not authorized to run ctt")
         sys.exit(1)
 
@@ -140,7 +140,7 @@ def issue_close(cluster, args, conf):
        print(f"resuming nodes {resumed}")
 
 def issue_list(cluster, args, conf):
-    print("id\tTarget\tStatus\tTitle")
+    print("id\tTitle\tTarget\tStatus")
     if args.status != "all":
         issues = cluster.issue_list(status=ctt.IssueStatus(args.status))
     else:
@@ -162,7 +162,7 @@ def drain(cluster, args, conf):
 
 def release(cluster, args, conf):
     for issue in args.issues:
-        resumed = cluster.end_work(issue, args.comment, args.user)
+        resumed = cluster.end_work(issue, args.user)
         print(f'resumed nodes: {resumed}')
 
 def ticket_close(cluster, args, conf):

@@ -7,6 +7,11 @@ from .base import Cluster
 # {de,gu}c -> 4 nodes per blade
 # {de,gu}g -> 2 nodes per blade
 class Shasta(Cluster):
+    pass
+
+class Gust(Shasta):
+    def all_nodes(self):
+        return NodeSet('gu[0001-0018]')
     def siblings(self, nodes: NodeSet):
         #TODO give nodes in "thing" if nodes is actually a rack/chassis/slot/board
         sibs = NodeSet()
@@ -27,10 +32,6 @@ class Shasta(Cluster):
                 # do something if node doesn't exist
                 raise NotImplementedError
         return sibs
-
-class Gust(Shasta):
-    def all_nodes(self):
-        return NodeSet('gu[0001-0018]')
 
 class Derecho(Shasta):
     pass

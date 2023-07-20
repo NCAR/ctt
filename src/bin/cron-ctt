@@ -15,6 +15,7 @@ def main():
     for reason, nodes in bad_nodes:
         good_nodes.difference_update(nodes)
         for node in nodes:
+            print(f"Opening issue for {node}")
             issue = ctt.Issue(title=reason, target=str(node), created_by="ctt", severity=conf["ctt"]["default_sev"])
             ctt_client.open(issue)
 
@@ -24,9 +25,11 @@ def main():
             if issue.enforce_down:
                 #FIXME need to commit db transaction or won't stick
                 issue.comment.append("target is up, turning back off")
+                print(f"enforcing {issue.target} being down")
                 system.drain(issue.target)
             else:
-                ctt.close(issue, "ctt", "target is up, assuming issue is resolved")
+                print(f"{issue.target} is up, closing ticket")
+                ctt_client.close(issue, "ctt", "target is up, assuming issue is resolved")
 
 if __name__ == "__main__":
     main()

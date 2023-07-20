@@ -6,6 +6,9 @@ from scheduler import PBS
 class Cluster:
     def __init__(self, conf):
         self.scheduler = PBS(conf)
+        self.pbsnodes = conf['pbsnodes']
+        self.pbsadmin = conf['pbsadmin']
+        self.badnodefile = conf['badnodefile']
 
     def siblings(self, node: NodeSet) -> NodeSet:
         raise NotImplementedError
@@ -16,14 +19,27 @@ class Cluster:
         output: set(bad node reasons: str, nodeset with that reason)
         """
         task = ClusterShell.Task.task_self()
-        task.run("[ -f /etc/THIS_IS_A_BAD_NODE.ncar ] && cat /etc/THIS_IS_A_BAD_NODE.ncar;' 2>/dev/null", nodes=nodes, timeout=30)
         bad_nodes = []
+        task.run(f"{self.pbsnodes} -l", nodes=self.pbsadmin, timeout=30)
         for buf, nodelist in task.iter_buffers():
-            if buf:
-                bad_nodes.append((buf.message().decode("utf-8"), NodeSet.fromlist(nodelist)))
+            for l in buf.message().decode("utf-8").split('\n'):
+                n = l.split()
+                node = n[0]
+                state = n[1]
+                title = ' '.join(n[2:])
+                #TODO FIXME aggregate issues witht he same issue, or change this silly api
+                bad_nodes.append((title, NodeSet.fromlist([node])))
+
+        #TODO return the full message from self.badnodefile, if it exists
+        #task.run(f"[ -f {self.badnodefile} ] && cat {self.badnodefile}; 2>/dev/null", nodes=nodes, timeout=30)
+        #for buf, nodelist in task.iter_buffers():
+        #    if buf:
+        #        bad_nodes.append((buf.message().decode("utf-8"), NodeSet.fromlist(nodelist)))
         return bad_nodes
 
     def resume(self, nodes: NodeSet) -> None:
+        task = ClusterShell.Task.task_self()
+        task.run(f"rm {self.badnodefile}", nodes=nodes, timeout=30)
         self.scheduler.resume(nodes)
 
     def drain(self, nodes: NodeSet) -> None:

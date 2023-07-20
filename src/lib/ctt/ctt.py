@@ -78,7 +78,7 @@ class CTT:
 
 
     def end_work(self, cttissue: int, operator: str) -> NodeSet:
-        return self._resume_sibs(self.db.issue(cttissue), operator)
+        return self._resume(self.db.issue(cttissue), operator)
 
     def close(self, issue: ctt.db.Issue, operator: str, comment: str) -> NodeSet:
         if issue.status == ctt.db.IssueStatus.CLOSED:
@@ -88,22 +88,22 @@ class CTT:
         issue.comments.append(ctt.db.Comment(created_by=operator, comment="closing issue"))
         issue.status = ctt.db.IssueStatus.CLOSED
         self.db.update()
-        resumed = self._resume_sibs(issue, operator)
+        resumed = self._resume(issue, operator)
         return resumed
 
-    def _resume_sibs(self, issue: ctt.db.Issue, comment: str, operator: str) -> NodeSet:
+    def _resume(self, issue: ctt.db.Issue, operator: str) -> NodeSet:
+        """ Resumes any node or sibling related to the issue that no longer needs to be down"""
         to_resume = NodeSet()
         to_check = NodeSet(issue.target)
-        issue.comments.append(ctt.db.Comment(created_by=operator, comment=comment))
         if issue.down_siblings:
             issue.down_siblings = False
             to_check.update(self.cluster.siblings(NodeSet(issue.target)))
-            issue.comments.append(ctt.db.Comment(created_by=operator, comment="releasing siblings"))
         self.db.update()
         for n in to_check:
             if not self.db.get_issues(target=n, status=ctt.db.IssueStatus.OPEN):
                 to_resume.update(n)
         if self.cluster_enabled:
             self.cluster.resume(to_resume)
+        issue.comments.append(ctt.db.Comment(created_by=operator, comment=f"Resuming Nodes {to_resume}"))
         return to_resume
 
