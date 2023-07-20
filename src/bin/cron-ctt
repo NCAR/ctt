@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+import cluster
+import ctt
+
+
+def main():
+    conf = ctt.get_config()
+    ctt_client = ctt.CTT(conf)
+    system = cluster.get_cluster(conf["cluster"])
+    good_nodes = system.all_nodes()
+
+    bad_nodes = system.bad_nodes(good_nodes)
+
+    # open tickets for bad
+    for reason, nodes in bad_nodes:
+        good_nodes.difference_update(nodes)
+        for node in nodes:
+            print(f"Opening issue for {node}")
+            issue = ctt.Issue(title=reason, target=str(node), created_by="ctt", severity=conf["ctt"]["default_sev"])
+            ctt_client.open(issue)
+
+    # close tickets for nodes that aren't bad anymore, or enforce the nodes being down
+    for issue in ctt_client.issue_list(status=ctt.IssueStatus.OPEN):
+        if issue.target in good_nodes:
+            if issue.enforce_down:
+                #FIXME need to commit db transaction or won't stick
+                issue.comment.append("target is up, turning back off")
+                print(f"enforcing {issue.target} being down")
+                system.drain(issue.target)
+            else:
+                print(f"{issue.target} is up, closing ticket")
+                ctt_client.close(issue, "ctt", "target is up, assuming issue is resolved")
+
+if __name__ == "__main__":
+    main()

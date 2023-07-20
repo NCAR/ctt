@@ -17,3 +17,5 @@ secrets.ini
 server
 user
 venv
+secrets.ini
+env.sh

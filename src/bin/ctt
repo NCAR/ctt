@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+import argparse
+import getpass
+import grp
+import os
+import sys
+
+import ClusterShell
+import ctt
+
+
+def _authorized_user(user, authorized_teams):
+    for team in authorized_teams:
+        try:
+            t = grp.getgrnam(team)
+            if user in t[3]:
+                return t[0]
+        # if the group doesn't exist don't crash
+        except KeyError:
+            pass
+    return None
+
+def main():
+    conf = ctt.get_config()
+    user = os.environ.get("SUDO_USER")
+
+    if user is None:
+        user = getpass.getuser()  # if not run via sudo
+
+    if user == "root":
+        print("You can't run ctt as root")
+        sys.exit(1)
+
+    if not _authorized_user(user, conf.get("users", "teams").split(" ")):
+        print("Current user is not authorized to run ctt")
+        sys.exit(1)
+
+    parser = _cli(conf)
+    args = parser.parse_args()
+    args.user = user
+
+    cluster = ctt.CTT(conf)
+
+    # when no subcommand given func isn't set
+    if "func" not in vars(args):
+        parser.print_help()
+    else:
+        args.func(cluster, args, conf)
+
+
+def _issues(parser):
+    parser.add_argument("issues", type=int, nargs="+", help="ctt issue numbers")
+
+
+def issues_and_comment(parser):
+    parser.add_argument("comment")
+    _issues(parser)
+
+
+def issue_args(parser, conf):
+    parser.add_argument("-a", "--assign", choices=("ssg", "casg"))
+    parser.add_argument("-s", "--severity", choices=(1, 2, 3, 4, 5), default=5)
+    parser.add_argument(
+        "-t", "--ticket", help="Attach an existing EV ticket to this issue"
+    )
+    parser.add_argument(
+        "-x",
+        "--type",
+        choices=("h", "s", "t", "u", "o"),
+        help="Hardware, Software, Test, Unknown, Other",
+    )
+
+
+def _cli(conf):
+    parser = argparse.ArgumentParser()
+    """
+    ev_enabled = "True" != conf.getboolean("ev", "enabled")
+    parser.add_argument(
+        "--noev",
+        action="store_true",
+        help="Do not update EV ticket",
+        default=(ev_enabled),
+    )
+    """
+    subparsers = parser.add_subparsers()
+    # TODO improve reuse of subparser args since so many subcommands have similar arguments
+    parser_show = subparsers.add_parser("show")
+    _issues(parser_show)
+    parser_show.set_defaults(func=issue_show)
+
+    parser_listcmd = subparsers.add_parser("list")
+    parser_listcmd.add_argument(
+        "-s",
+        "--status",
+        choices=['all'] + [x.value for x in ctt.IssueStatus],
+        default=ctt.IssueStatus("open"),
+    )
+    parser_listcmd.set_defaults(func=issue_list)
+
+    parser_close = subparsers.add_parser("close")
+    issues_and_comment(parser_close)
+    parser_close.set_defaults(func=issue_close)
+
+    parser_opencmd = subparsers.add_parser("open")
+    parser_opencmd.add_argument("title")
+    parser_opencmd.add_argument("description")
+    parser_opencmd.add_argument(
+        "targets",
+        nargs="+",
+        help="Warning: Changing the node name will NOT drain a node nor resume the old node name",
+    )
+    issue_args(parser_opencmd, conf)
+    parser_opencmd.set_defaults(func=issue_open)
+
+    # release siblings
+    parser_release = subparsers.add_parser("release")
+    issues_and_comment(parser_release)
+    parser_release.set_defaults(func=release)
+
+    parser_drain = subparsers.add_parser("drain")
+    _issues(parser_drain)
+    parser_drain.set_defaults(func=drain)
+
+
+    return parser
+
+def issue_open(cluster, args, conf):
+    for targets in args.targets:
+        targetset = ClusterShell.NodeSet.NodeSet(targets)
+        for n in targetset:
+            issue = ctt.Issue(title=args.title, description=args.description, ticket=args.ticket, severity=args.severity, created_by=args.user, target=n)
+            cttissue = cluster.open(issue)
+            print(f"Issue opened for {n} with id: {cttissue}")
+
+def issue_close(cluster, args, conf):
+    for cttissue in args.issues:
+       issue = cluster.issue(cttissue)
+       resumed = cluster.close(issue, args.user, args.comment)
+       print(f"Issue {cttissue} closed for node {issue.target}")
+       print(f"resuming nodes {resumed}")
+
+def issue_list(cluster, args, conf):
+    print("id\tTitle\tTarget\tStatus")
+    if args.status != "all":
+        issues = cluster.issue_list(status=ctt.IssueStatus(args.status))
+    else:
+        issues = cluster.issue_list()
+    for issue in issues:
+        print(f"{issue.id}\t{issue.title}\t{issue.target}\t{issue.status.value}")
+
+def issue_show(cluster, args, conf):
+    for i in args.issues:
+        issue = cluster.issue(i)
+        print(issue)
+        for c in issue.comments:
+            print(f"{c.comment} - {c.created_by} {c.created_at}")
+
+def drain(cluster, args, conf):
+    for issue in args.issues:
+        draining = cluster.prep_for_work(issue, args.user)
+        print(f'draining nodes: {draining}')
+
+def release(cluster, args, conf):
+    for issue in args.issues:
+        resumed = cluster.end_work(issue, args.user)
+        print(f'resumed nodes: {resumed}')
+
+def ticket_close(cluster, args, conf):
+    for issue in args.issues:
+        cluster.ticket_close(args.issue, args.comment)
+def ticket_open(cluster, args, conf):
+    for issue in args.issues:
+        cluster.ticket_open(args.issue)
+
+
+if "__main__" == __name__:
+    main()
+    sys.exit(0)
