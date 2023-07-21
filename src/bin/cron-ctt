@@ -29,12 +29,12 @@ def main():
             if issue.enforce_down:
                 #FIXME need to commit db transaction or won't stick
                 issue.comment.append("target is up, turning back off")
-                sclient.send(f"ctt: Found {issue.target} online, draining per issue {issue.id}")
+                sclient.send(f"ctt: Found {issue.target} online, draining per issue {issue.id} {issue.title}")
                 #print(f"enforcing {issue.target} being down")
                 system.drain(issue.target)
             else:
                 #print(f"{issue.target} is up, closing ticket")
-                sclient.send(f"ctt: Found {issue.target} online, closing issue {issue.id}")
+                sclient.send(f"ctt: Found {issue.target} online, closing issue {issue.id} {issue.title}")
                 ctt_client.close(issue, "ctt", "target is up, assuming issue is resolved")
 
 if __name__ == "__main__":

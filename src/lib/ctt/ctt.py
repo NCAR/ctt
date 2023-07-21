@@ -88,6 +88,7 @@ class CTT:
         issue.comments.append(ctt.db.Comment(created_by=operator, comment=comment))
         issue.comments.append(ctt.db.Comment(created_by=operator, comment="closing issue"))
         issue.status = ctt.db.IssueStatus.CLOSED
+        issue.enforce_down=False
         self.db.update()
         resumed = self._resume(issue, operator)
         return resumed

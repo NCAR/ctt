@@ -4,6 +4,7 @@ import getpass
 import grp
 import os
 import sys
+import slack
 
 import ClusterShell
 import ctt
@@ -125,17 +126,21 @@ def _cli(conf):
     return parser
 
 def issue_open(cluster, args, conf):
+    sclient = slack.Slack(conf['slack'])
     for targets in args.targets:
         targetset = ClusterShell.NodeSet.NodeSet(targets)
         for n in targetset:
-            issue = ctt.Issue(title=args.title, description=args.description, ticket=args.ticket, severity=args.severity, created_by=args.user, target=n)
+            issue = ctt.Issue(title=args.title, description=args.description, ticket=args.ticket, severity=args.severity, created_by=args.user, enforce_down=True, target=n)
             cttissue = cluster.open(issue)
+            sclient.send(f"{args.user}: Issue {cttissue} {args.title} opened for {n}")
             print(f"Issue opened for {n} with id: {cttissue}")
 
 def issue_close(cluster, args, conf):
+    sclient = slack.Slack(conf['slack'])
     for cttissue in args.issues:
        issue = cluster.issue(cttissue)
        resumed = cluster.close(issue, args.user, args.comment)
+       sclient.send(f"{args.user}: Issue {cttissue} {issue.title} closed for {issue.target}")
        print(f"Issue {cttissue} closed for node {issue.target}")
        print(f"resuming nodes {resumed}")
 
@@ -156,13 +161,17 @@ def issue_show(cluster, args, conf):
             print(f"{c.comment} - {c.created_by} {c.created_at}")
 
 def drain(cluster, args, conf):
+    sclient = slack.Slack(conf['slack'])
     for issue in args.issues:
         draining = cluster.prep_for_work(issue, args.user)
+        sclient.send(f"{args.user}: Issue {issue} {issue.title} draining {draining}") 
         print(f'draining nodes: {draining}')
 
 def release(cluster, args, conf):
+    sclient = slack.Slack(conf['slack'])
     for issue in args.issues:
         resumed = cluster.end_work(issue, args.user)
+        sclient.send(f"{args.user}: Issue {issue} {issue.title} releasing {draining}") 
         print(f'resumed nodes: {resumed}')
 
 def ticket_close(cluster, args, conf):
