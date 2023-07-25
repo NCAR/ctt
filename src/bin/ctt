@@ -4,10 +4,10 @@ import getpass
 import grp
 import os
 import sys
-import slack
 
 import ClusterShell
 import ctt
+import slack
 
 
 def _authorized_user(user, authorized_teams):
@@ -164,14 +164,14 @@ def drain(cluster, args, conf):
     sclient = slack.Slack(conf['slack'])
     for issue in args.issues:
         draining = cluster.prep_for_work(issue, args.user)
-        sclient.send(f"{args.user}: Issue {issue} {issue.title} draining {draining}") 
+        sclient.send(f"{args.user}: Issue {issue} {issue.title} draining {draining}")
         print(f'draining nodes: {draining}')
 
 def release(cluster, args, conf):
     sclient = slack.Slack(conf['slack'])
     for issue in args.issues:
         resumed = cluster.end_work(issue, args.user)
-        sclient.send(f"{args.user}: Issue {issue} {issue.title} releasing {draining}") 
+        sclient.send(f"{args.user}: Issue {issue} {issue.title} releasing {resumed}")
         print(f'resumed nodes: {resumed}')
 
 def ticket_close(cluster, args, conf):

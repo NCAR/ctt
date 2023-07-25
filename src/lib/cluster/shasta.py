@@ -47,7 +47,7 @@ class Derecho(Shasta):
                 lastsib = firstsib + 3
             if nodetype == 'g':
                 firstsib = ((num//2)*2)+1
-                lastsib = firstib + 1
+                lastsib = firstsib + 1
             sibs.update(f"de{nodetype}[{str(firstsib).zfill(4)}-{str(lastsib).zfill(4)}]")
         return sibs
-        
+
