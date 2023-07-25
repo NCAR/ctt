@@ -157,13 +157,13 @@ def issue_close(cluster, args, conf):
        print(f"resuming nodes {resumed}")
 
 def issue_list(cluster, args, conf):
-    print("id\tTitle\tTarget\tAssigned to")
+    print("id\tTarget\tAssigned to\tTitle")
     if args.status != "all":
         issues = cluster.issue_list(status=ctt.IssueStatus(args.status))
     else:
         issues = cluster.issue_list()
     for issue in issues:
-        print(f"{issue.id}\t{issue.title}\t{issue.target}\t{issue.assigned_to}")
+        print(f"{issue.id}\t{issue.target}\t{issue.assigned_to}\t{issue.title}")
 
 def issue_show(cluster, args, conf):
     for i in args.issues:

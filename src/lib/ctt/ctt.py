@@ -42,7 +42,7 @@ class CTT:
     def update(self, cttissue: int, args):
         issue = self.issue(cttissue)
         for k in vars(issue):
-            if k in args:
+            if k in args and args[k] is not None:
                 setattr(issue, k, args[k])
         self.db.update()
 
