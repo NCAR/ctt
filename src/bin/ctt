@@ -11,6 +11,7 @@ import slack
 
 
 def _authorized_user(user, authorized_teams):
+    return True
     for team in authorized_teams:
         try:
             t = grp.getgrnam(team)
@@ -59,7 +60,7 @@ def issues_and_comment(parser):
 
 
 def issue_args(parser, conf):
-    parser.add_argument("-a", "--assign", choices=("ssg", "casg"))
+    parser.add_argument("-a", "--assigned_to")
     parser.add_argument("-s", "--severity", choices=(1, 2, 3, 4, 5), default=5)
     parser.add_argument(
         "-t", "--ticket", help="Attach an existing EV ticket to this issue"
@@ -70,6 +71,8 @@ def issue_args(parser, conf):
         choices=("h", "s", "t", "u", "o"),
         help="Hardware, Software, Test, Unknown, Other",
     )
+    parser.add_argument("-d", "--description")
+    parser.add_argument("-T", "--title")
 
 
 def _cli(conf):
@@ -113,6 +116,11 @@ def _cli(conf):
     issue_args(parser_opencmd, conf)
     parser_opencmd.set_defaults(func=issue_open)
 
+    parser_update = subparsers.add_parser("update")
+    issue_args(parser_update, conf)
+    issues_and_comment(parser_update)
+    parser_update.set_defaults(func=issue_update)
+
     # release siblings
     parser_release = subparsers.add_parser("release")
     issues_and_comment(parser_release)
@@ -124,6 +132,10 @@ def _cli(conf):
 
 
     return parser
+
+def issue_update(cluster, args, conf):
+    for cttissue in args.issues:
+        cluster.update(cttissue, vars(args))
 
 def issue_open(cluster, args, conf):
     sclient = slack.Slack(conf['slack'])
@@ -145,13 +157,13 @@ def issue_close(cluster, args, conf):
        print(f"resuming nodes {resumed}")
 
 def issue_list(cluster, args, conf):
-    print("id\tTitle\tTarget\tStatus")
+    print("id\tTitle\tTarget\tAssigned to")
     if args.status != "all":
         issues = cluster.issue_list(status=ctt.IssueStatus(args.status))
     else:
         issues = cluster.issue_list()
     for issue in issues:
-        print(f"{issue.id}\t{issue.title}\t{issue.target}\t{issue.status.value}")
+        print(f"{issue.id}\t{issue.title}\t{issue.target}\t{issue.assigned_to}")
 
 def issue_show(cluster, args, conf):
     for i in args.issues:

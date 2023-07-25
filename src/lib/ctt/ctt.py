@@ -39,6 +39,13 @@ class CTT:
         logging.debug('listing issues')
         return self.db.get_issues(**kwargs)
 
+    def update(self, cttissue: int, args):
+        issue = self.issue(cttissue)
+        for k in vars(issue):
+            if k in args:
+                setattr(issue, k, args[k])
+        self.db.update()
+
     def issue(self, cttissue: int) -> ctt.db.Issue:
         logging.debug(f'showing issue details for: {cttissue}')
         return self.db.issue(cttissue)
