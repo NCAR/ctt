@@ -107,4 +107,6 @@ class DB:
         if "target" in kwargs:
             #TODO also get issues where a nodes IRU/chassis is the target
             statment = statment.where(Issue.target == kwargs["target"])
+        if "down_siblings" in kwargs:
+            statment = statment.where(Issue.down_siblings == kwargs["down_siblings"])
         return self.session.scalars(statment).all()

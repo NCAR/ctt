@@ -17,6 +17,9 @@ def main():
     for reason, nodes in bad_nodes:
         good_nodes.difference_update(nodes)
         for node in nodes:
+            # dont open issues for drained siblings
+            if ctt_client.down_for_sibling(node):
+                continue
             #print(f"Opening issue for {node}")
             issue = ctt.Issue(title=reason, target=str(node), created_by="ctt", severity=conf["ctt"]["default_sev"])
             issueid = ctt_client.open(issue)

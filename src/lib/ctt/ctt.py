@@ -81,7 +81,7 @@ class CTT:
         issue.comments.append(ctt.db.Comment(created_by=operator, comment="draining siblings for work"))
         self.db.update()
         to_drain = self.cluster.siblings(NodeSet(issue.target))
-        self.cluster.drain(self.cluster.siblings(NodeSet(issue.target)))
+        self.cluster.drain(to_drain)
         return to_drain
 
 
@@ -99,6 +99,12 @@ class CTT:
         self.db.update()
         resumed = self._resume(issue, operator)
         return resumed
+
+    def down_for_sibling(self, node: str) -> bool:
+        for sib in self.cluster.siblings(NodeSet(node)):
+            if self.db.get_issues(target=sib, status=ctt.db.IssueStatus.OPEN, down_siblings=True):
+                return True
+        return False
 
     def _resume(self, issue: ctt.db.Issue, operator: str) -> NodeSet:
         """ Resumes any node or sibling related to the issue that no longer needs to be down"""
