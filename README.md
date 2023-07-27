@@ -19,4 +19,9 @@ CTT is a tool for managing tickets for a HPC system
 - before commiting run 
   - `ruff check . --fix` and fix any errors
   - tests are still a WIP, but after they are setup make sure they all pass
+- To Distribute:
+  - conda activate and source env.sh
+  - `pyinstaller -F --hidden-import ClusterShell.Worker.Ssh src/bin/cron-ctt`
+  - `pyinstaller -F --hidden-import ClusterShell.Worker.Ssh src/bin/ctt`
+  - 
 

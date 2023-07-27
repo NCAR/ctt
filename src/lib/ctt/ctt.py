@@ -18,7 +18,7 @@ class IssueNotFoundException(CTTException):
 class TicketNotFoundException(CTTException):
     pass
 
-def get_config(configFile="conf/ctt.ini", secretsFile="conf/secrets.ini"):
+def get_config(configFile="/opt/ncar/ctt/conf/ctt.ini", secretsFile="/opt/ncar/ctt/conf/secrets.ini"):
     parser = ConfigParser()
     parser.read(configFile)
     parser.read(secretsFile)
