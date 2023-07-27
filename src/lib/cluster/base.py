@@ -20,7 +20,7 @@ class Cluster:
         output: set(bad node reasons: str, nodeset with that reason)
         """
         task = ClusterShell.Task.task_self()
-        bad_nodes = []
+        bad_nodes = {}
         task.run(f"{self.pbsnodes} -l", nodes=self.pbsadmin, timeout=30)
         for buf, nodelist in task.iter_buffers():
             for line in buf.message().decode("utf-8").split('\n'):
@@ -29,7 +29,10 @@ class Cluster:
                 n[1]
                 title = ' '.join(n[2:])
                 #TODO FIXME aggregate issues witht he same issue, or change this silly api
-                bad_nodes.append((title, NodeSet.fromlist([node])))
+                if title in bad_nodes:
+                    bad_nodes[title].update(node)
+                else:
+                    bad_nodes[title] = NodeSet.fromlist([node])
 
         #TODO return the full message from self.badnodefile, if it exists
         #task.run(f"[ -f {self.badnodefile} ] && cat {self.badnodefile}; 2>/dev/null", nodes=nodes, timeout=30)

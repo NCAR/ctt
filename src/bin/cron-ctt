@@ -2,6 +2,7 @@
 import cluster
 import ctt
 import slack
+from ClusterShell.NodeSet import NodeSet
 
 
 def main():
@@ -14,31 +15,52 @@ def main():
     bad_nodes = system.bad_nodes(good_nodes)
 
     # open tickets for bad
-    for reason, nodes in bad_nodes:
+    for reason, nodes in bad_nodes.items():
         good_nodes.difference_update(nodes)
+        new_issues_nodes = nodes
+        new_issues = []
         for node in nodes:
             # dont open issues for drained siblings
             if ctt_client.down_for_sibling(node):
+                new_issues_nodes = new_issues_nodes.difference(node)
                 continue
             #print(f"Opening issue for {node}")
             issue = ctt.Issue(title=reason, target=str(node), created_by="ctt", severity=conf["ctt"]["default_sev"])
             issueid = ctt_client.open(issue)
             if issueid is not None:
-                sclient.send(f"ctt: Opening issue {issueid} for {str(node)} {reason}")
+                new_issues.append(issueid)
+
+        if len(new_issues) > 0:
+            sclient.send(f"ctt: Opening issue {new_issues} for {str(new_issues_nodes)} {reason}")
 
     # close tickets for nodes that aren't bad anymore, or enforce the nodes being down
+    close_nodes = {}
+    enforce_nodes = {}
     for issue in ctt_client.issue_list(status=ctt.IssueStatus.OPEN):
         if issue.target in good_nodes:
             if issue.enforce_down:
                 #FIXME need to commit db transaction or won't stick
-                issue.comment.append("target is up, turning back off")
-                sclient.send(f"ctt: Found {issue.target} online, draining per issue {issue.id} {issue.title}")
+                print(issue.target)
+                if issue.title in enforce_nodes:
+                    enforce_nodes[issue.title].update(issue.target)
+                else:
+                    enforce_nodes[issue.title] = NodeSet.fromlist([issue.target])
                 #print(f"enforcing {issue.target} being down")
                 system.drain(issue.target)
             else:
                 #print(f"{issue.target} is up, closing ticket")
-                sclient.send(f"ctt: Found {issue.target} online, closing issue {issue.id} {issue.title}")
+                if issue.title in close_nodes:
+                    close_nodes[issue.title].update(issue.target)
+                else:
+                    close_nodes[issue.title] = NodeSet.fromlist([issue.target])
                 ctt_client.close(issue, "ctt", "target is up, assuming issue is resolved")
+    for title, nodes in enforce_nodes.items():
+            sclient.send(f"ctt: Found {str(nodes)} online, draining per issue {title}")
+    for title, nodes in close_nodes.items():
+            sclient.send(f"ctt: Found {str(nodes)} online, closing issue {title}")
+    print(enforce_nodes)
+    print(close_nodes)
+
 
 if __name__ == "__main__":
     main()
