@@ -152,7 +152,7 @@ def issue_close(cluster, args, conf):
     for cttissue in args.issues:
        issue = cluster.issue(cttissue)
        resumed = cluster.close(issue, args.user, args.comment)
-       sclient.send(f"{args.user}: Issue {cttissue} {issue.title} closed for {issue.target}")
+       sclient.send(f"{args.user}: Issue {cttissue} '{issue.title}' closed for {issue.target} '{args.comment}'")
        print(f"Issue {cttissue} closed for node {issue.target}")
        print(f"resuming nodes {resumed}")
 
