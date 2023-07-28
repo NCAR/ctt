@@ -21,7 +21,7 @@ def main():
         new_issues = []
         for node in nodes:
             # dont open issues for drained siblings
-            if ctt_client.down_for_sibling(node):
+            if ctt_client.down_for_sibling(node) or ctt_client.issue_list(status=ctt.IssueStatus.OPEN, target=node):
                 new_issues_nodes = new_issues_nodes.difference(node)
                 continue
             #print(f"Opening issue for {node}")
@@ -58,8 +58,6 @@ def main():
             sclient.send(f"ctt: Found {str(nodes)} online, draining per issue {title}")
     for title, nodes in close_nodes.items():
             sclient.send(f"ctt: Found {str(nodes)} online, closing issue {title}")
-    print(enforce_nodes)
-    print(close_nodes)
 
 
 if __name__ == "__main__":
