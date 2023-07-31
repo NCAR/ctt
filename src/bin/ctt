@@ -68,8 +68,8 @@ def issue_args(parser, conf):
     parser.add_argument(
         "-x",
         "--type",
-        choices=("h", "s", "t", "u", "o"),
-        help="Hardware, Software, Test, Unknown, Other",
+        choices=("h", "s"),
+        help="Hardware, Software",
     )
     parser.add_argument("-d", "--description")
     parser.add_argument("-T", "--title")

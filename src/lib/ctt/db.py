@@ -23,8 +23,8 @@ class IssueStatus(enum.Enum):
     CLOSED = "closed"
 
 class IssueType(enum.Enum):
-    SOFTWARE = "software"
-    HARDWARE = "hardware"
+    SOFTWARE = "s"
+    HARDWARE = "h"
 
 
 class Issue(Base):

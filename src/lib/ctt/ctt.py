@@ -43,7 +43,10 @@ class CTT:
         issue = self.issue(cttissue)
         for k in vars(issue):
             if k in args and args[k] is not None:
-                setattr(issue, k, args[k])
+                if k == "type":
+                    issue.type = ctt.db.IssueType(args["type"])
+                else:
+                    setattr(issue, k, args[k])
         self.db.update()
 
     def issue(self, cttissue: int) -> ctt.db.Issue:
