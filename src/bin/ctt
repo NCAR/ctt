@@ -5,7 +5,7 @@ import grp
 import os
 import sys
 
-import ClusterShell
+from ClusterShell.NodeSet import NodeSet
 import ctt
 import slack
 
@@ -51,7 +51,7 @@ def main():
 
 
 def _issues(parser):
-    parser.add_argument("issues", type=int, nargs="+", help="ctt issue numbers")
+    parser.add_argument("issue", type=int, nargs="+", help="ctt issue numbers")
 
 
 def issues_and_comment(parser):
@@ -134,27 +134,38 @@ def _cli(conf):
     return parser
 
 def issue_update(cluster, args, conf):
-    for cttissue in args.issues:
+    for cttissue in args.issue:
         cluster.update(cttissue, vars(args))
 
 def issue_open(cluster, args, conf):
     sclient = slack.Slack(conf['slack'])
-    for targets in args.targets:
-        targetset = ClusterShell.NodeSet.NodeSet(targets)
-        for n in targetset:
-            issue = ctt.Issue(title=args.title, description=args.description, ticket=args.ticket, severity=args.severity, created_by=args.user, enforce_down=True, target=n)
-            cttissue = cluster.open(issue)
-            sclient.send(f"{args.user}: Issue {cttissue} {args.title} opened for {n}")
-            print(f"Issue opened for {n} with id: {cttissue}")
+    nodeset = NodeSet()
+    nodeset.updaten(args.targets)
+    print(args.targets)
+    for n in nodeset:
+        issue = ctt.Issue(title=args.title, description=args.description, ticket=args.ticket, severity=args.severity, created_by=args.user, enforce_down=True, target=n)
+        cttissue = cluster.open(issue)
+        print(f"Issue opened for {n}, with id {cttissue}")
+    sclient.send(f"{args.user}: Issues opened for {nodeset}: {args.title}")
 
 def issue_close(cluster, args, conf):
     sclient = slack.Slack(conf['slack'])
-    for cttissue in args.issues:
+    resuming = NodeSet()
+    nodesets = {}
+    for cttissue in args.issue:
        issue = cluster.issue(cttissue)
        resumed = cluster.close(issue, args.user, args.comment)
-       sclient.send(f"{args.user}: Issue {cttissue} '{issue.title}' closed for {issue.target} '{args.comment}'")
+       resuming.update(resumed)
+       if issue.title in nodesets:
+           nodesets[issue.title].update(issue.target)
+       else:
+           nodesets[issue.title] = NodeSet(issue.target)
        print(f"Issue {cttissue} closed for node {issue.target}")
        print(f"resuming nodes {resumed}")
+    for k,v in nodesets.items():
+        sclient.send(f"{args.user}: Closed issues for {v}: {k} '{args.comment}'")
+    if resuming is not None:
+        sclient.send(f"{args.user}: Resuming {resuming}")
 
 def issue_list(cluster, args, conf):
     print("id\tTarget\tAssigned to\tTitle")
@@ -166,7 +177,7 @@ def issue_list(cluster, args, conf):
         print(f"{issue.id}\t{issue.target}\t{issue.assigned_to}\t{issue.title}")
 
 def issue_show(cluster, args, conf):
-    for i in args.issues:
+    for i in args.issue:
         issue = cluster.issue(i)
         print(issue)
         for c in issue.comments:
@@ -174,24 +185,20 @@ def issue_show(cluster, args, conf):
 
 def drain(cluster, args, conf):
     sclient = slack.Slack(conf['slack'])
-    for issue in args.issues:
+    drain = NodeSet()
+    for issue in args.issue:
         draining = cluster.prep_for_work(issue, args.user)
-        sclient.send(f"{args.user}: Issue {issue} {issue.title} draining {draining}")
+        drain.update(draining)
         print(f'draining nodes: {draining}')
+    sclient.send(f"{args.user}: draining {drain}")
 
 def release(cluster, args, conf):
     sclient = slack.Slack(conf['slack'])
-    for issue in args.issues:
+    release = NodeSet()
+    for issue in args.issue:
         resumed = cluster.end_work(issue, args.user)
-        sclient.send(f"{args.user}: Issue {issue} {issue.title} releasing {resumed}")
         print(f'resumed nodes: {resumed}')
-
-def ticket_close(cluster, args, conf):
-    for issue in args.issues:
-        cluster.ticket_close(args.issue, args.comment)
-def ticket_open(cluster, args, conf):
-    for issue in args.issues:
-        cluster.ticket_open(args.issue)
+    sclient.send(f"{args.user}: resuming {release}")
 
 
 if "__main__" == __name__:
