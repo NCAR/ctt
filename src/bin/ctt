@@ -27,10 +27,12 @@ def main():
     user = os.environ.get("SUDO_USER")
 
     if user is None:
-        user = getpass.getuser()  # if not run via sudo
+        print("Must use sudo")
+        sys.exit(1)
+        #user = getpass.getuser()  # if not run via sudo
 
     if user == "root":
-        print("You can't run ctt as root")
+        print("You can't run ctt as root, please use sudo or set SUDO_USER")
         sys.exit(1)
 
     if not _authorized_user(user, conf.get("users", "teams").split(" ")):
