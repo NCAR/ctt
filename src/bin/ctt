@@ -60,8 +60,7 @@ def issues_and_comment(parser):
     parser.add_argument("comment")
     _issues(parser)
 
-
-def issue_args(parser, conf):
+def base_issue_args(parser, conf):
     parser.add_argument("-a", "--assigned_to")
     parser.add_argument("-s", "--severity", choices=(1, 2, 3, 4, 5), default=5)
     parser.add_argument(
@@ -73,6 +72,9 @@ def issue_args(parser, conf):
         choices=("h", "s"),
         help="Hardware, Software",
     )
+
+def issue_args(parser, conf):
+    base_issue_args(parser, conf)
     parser.add_argument("-d", "--description")
     parser.add_argument("-T", "--title")
 
@@ -115,7 +117,7 @@ def _cli(conf):
         nargs="+",
         help="Warning: Changing the node name will NOT drain a node nor resume the old node name",
     )
-    issue_args(parser_opencmd, conf)
+    base_issue_args(parser_opencmd, conf)
     parser_opencmd.set_defaults(func=issue_open)
 
     parser_update = subparsers.add_parser("update")
@@ -181,7 +183,10 @@ def issue_list(cluster, args, conf):
 def issue_show(cluster, args, conf):
     for i in args.issue:
         issue = cluster.issue(i)
-        print(issue)
+        for arg in vars(issue):
+            if arg == "_sa_instance_state":
+                continue
+            print(f"{arg}: {getattr(issue,arg)}")
         for c in issue.comments:
             print(f"{c.comment} - {c.created_by} {c.created_at}")
 

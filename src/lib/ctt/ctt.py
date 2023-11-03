@@ -77,8 +77,6 @@ class CTT:
             return issueid
 
     def prep_for_work(self, cttissue: int, operator: str) -> NodeSet:
-        # TODO return nodes that were drained
-        # TODO add option to schedule for work later, instead of ASAP
         issue = self.issue(cttissue)
         issue.down_siblings = True
         issue.comments.append(ctt.db.Comment(created_by=operator, comment="draining siblings for work"))

@@ -14,6 +14,11 @@ def main():
 
     bad_nodes = system.bad_nodes(good_nodes)
 
+    cluster_conf = ctt_client.cluster_enabled
+    # don't bother draining pbs nodes that are already offline
+    # sneaky race condition fix too (what if node goes online while issue is being made?
+    # -- don't open a new issue and next cron will close it
+    ctt_client.cluster_enabled = False
     # open tickets for bad
     for reason, nodes in bad_nodes.items():
         good_nodes.difference_update(nodes)
@@ -32,6 +37,7 @@ def main():
 
         if len(new_issues) > 0:
             sclient.send(f"ctt: Opening issue {new_issues} for {str(new_issues_nodes)} {reason}")
+    ctt_client.cluster_enabled = cluster_conf
 
     # close tickets for nodes that aren't bad anymore, or enforce the nodes being down
     close_nodes = {}
@@ -39,16 +45,12 @@ def main():
     for issue in ctt_client.issue_list(status=ctt.IssueStatus.OPEN):
         if issue.target in good_nodes:
             if issue.enforce_down:
-                #FIXME need to commit db transaction or won't stick
-                print(issue.target)
                 if issue.title in enforce_nodes:
                     enforce_nodes[issue.title].update(issue.target)
                 else:
                     enforce_nodes[issue.title] = NodeSet.fromlist([issue.target])
-                #print(f"enforcing {issue.target} being down")
                 system.drain(issue.target)
             else:
-                #print(f"{issue.target} is up, closing ticket")
                 if issue.title in close_nodes:
                     close_nodes[issue.title].update(issue.target)
                 else:
